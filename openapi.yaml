@@ -1,0 +1,428 @@
+openapi: 3.1.0
+info:
+  title: DebatiX API
+  description: API for DebatiX application
+  version: 1.0.0
+servers:
+  - description: Development server
+    url: http://localhost:8080
+
+paths:
+  /user/login:
+    post:
+      tags: [users]
+      summary: User login
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserLogin'
+      responses:
+        '200':
+          description: OK; Cookie set
+          headers:
+            Set-Cookie:
+              description: Session Cookie (en producción incluirá `Secure`)
+              schema: { type: string }
+              example: >
+                token=abc123xyz; HttpOnly; Path=/; SameSite=Strict; Max-Age=86400
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiMessage' }
+        '400': { description: Bad Request }
+        '401': { description: Unauthorized; Incorrect password }
+        '404': { description: Not Found }
+        '500': { description: Internal Server Error }
+
+  /user/google-login:
+    post:
+      tags: [users]
+      summary: User login with Google
+      operationId: google-login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserGoogleLogin'
+      responses:
+        '200':
+          description: OK; Cookie set
+          headers:
+            Set-Cookie:
+              description: Session Cookie (en producción incluirá `Secure`)
+              schema: { type: string }
+              example: >
+                token=abc123xyz; HttpOnly; Path=/; SameSite=Strict; Max-Age=86400
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GoogleLoginResponse' }
+        '201':
+          description: Created; User registered and cookie set
+          headers:
+            Set-Cookie:
+              description: Session Cookie (en producción incluirá `Secure`)
+              schema: { type: string }
+              example: >
+                token=abc123xyz; HttpOnly; Path=/; SameSite=Strict; Max-Age=86400
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GoogleLoginResponse' }
+        '400': { description: Bad Request; Invalid Google token }
+        '401': { description: Unauthorized; Invalid Google credential }
+        '403': { description: Forbidden; Google account not verified }
+        '500': { description: Internal Server Error; Error processing Google login }
+
+  /user/register:
+    post:
+      tags: [users]
+      summary: User registration
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserRegister'
+      responses:
+        '201':
+          description: Created; Cookie set
+          headers:
+            Set-Cookie:
+              description: Session Cookie (en producción incluirá `Secure`)
+              schema: { type: string }
+              example: >
+                token=abc123xyz; HttpOnly; Path=/; SameSite=Strict; Max-Age=86400
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiMessage' }
+        '400': { description: Bad Request }
+        '409': { description: Conflict }
+        '500': { description: Internal Server Error }
+
+  /user/logout:
+    post:
+      tags: [users]
+      summary: User logout
+      operationId: logout
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200':
+          description: OK; Cookie cleared
+          headers:
+            Set-Cookie:
+              description: Session Cookie cleared
+              schema: { type: string }
+              example: >
+                token=; HttpOnly; Path=/; Max-Age=0; SameSite=Strict
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiMessage' }
+        '401': { description: Unauthorized; No session cookie }
+        '404': { description: Not Found; User not found }
+        '500': { description: Internal Server Error; Probably fake cookie or session expired }
+
+  /user/forgot-password:
+    post:
+      tags: [users]
+      summary: Forgot password
+      operationId: forgot-password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  description: User's email address
+      responses:
+        '200':
+          description: OK; Password reset email sent
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiMessage' }
+        '400': { description: Bad Request; Invalid email format }
+        '404': { description: Not Found; User not found }
+        '500': { description: Internal Server Error; Error sending email }
+
+  /user/send-verification-email:
+    post:
+      tags: [users]
+      summary: Send verification email
+      operationId: send-verification-email
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200':
+          description: OK; Verification email sent
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiMessage' }
+        '401': { description: Unauthorized; No session cookie }
+        '404': { description: Not Found; User not found }
+        '500': { description: Internal Server Error; Error sending email }
+
+  /user/reset-password:
+    patch:
+      tags: [users]
+      summary: Reset password
+      operationId: reset-password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_password, token]
+              properties:
+                user_password:
+                  type: string
+                  format: password
+                  description: New password for the user
+                token:
+                  type: string
+                  description: Opaque token from the reset email (not JWT)
+      responses:
+        '200':
+          description: OK; Password reset successfully
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiMessage' }
+        '400': { description: Bad Request; Missing/invalid token or password format }
+        '401': { description: Unauthorized; Invalid or expired token }
+        '404': { description: Not Found; User not found }
+        '500': { description: Internal Server Error; Error resetting password }
+
+  /user/update:
+    patch:
+      tags: [users]
+      summary: Update user profile
+      operationId: update-profile
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                first_name: { type: string, description: User's first name }
+                last_name: { type: string, description: User's last name }
+                phone: { type: string, description: User's phone number (optional) }
+      responses:
+        '200':
+          description: OK; Profile updated successfully
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiMessage' }
+        '400': { description: Bad Request; Invalid input data }
+        '401': { description: Unauthorized; No session cookie or invalid session }
+        '404': { description: Not Found; User not found }
+        '500': { description: Internal Server Error; Error updating profile }
+
+  /user/profile:
+    get:
+      tags: [users]
+      summary: Get user profile
+      operationId: get-profile
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200':
+          description: OK; User profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileResponse'
+        '401': { description: Unauthorized; No session cookie or invalid session }
+        '404': { description: Not Found; User not found }
+        '500': { description: Internal Server Error; Error retrieving profile }
+
+  /user/email-verification:
+    get:
+      tags: [users]
+      summary: Verify user email
+      operationId: verify-email
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema: { type: string }
+          description: Verification token (JWT) sent to the user's email
+      responses:
+        '200': { description: OK; Email verified successfully }
+        '400': { description: Bad Request; Invalid token format }
+        '401': { description: Unauthorized; Missing/invalid session cookie }
+        '404': { description: Not Found; User not found or token expired }
+        '500': { description: Internal Server Error; Error verifying email }
+
+  /user-security/login:
+    post:
+      tags: [user-security]
+      summary: UserSecurity (2FA) login
+      operationId: userSecurity-login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/UserLogin'
+                - type: object
+                  properties:
+                    token:
+                      type: string
+                      description: >-
+                        TOTP code (6 digits). If omitted and the user has 2FA, the API will ask for it.
+      responses:
+        '200':
+          description: |
+            OK;
+            - Case A: requires 2FA (requires2FA=true, no cookie)
+            - Case B: 2FA verified; cookie `token` set
+          headers:
+            Set-Cookie:
+              description: Session cookie (only in Case B; en producción incluirá `Secure`)
+              schema: { type: string }
+              example: >
+                token=abc123xyz; HttpOnly; Path=/; SameSite=Strict; Max-Age=86400
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ApiMessage'
+                  - $ref: '#/components/schemas/UserSecurity2FARequired'
+        '201':
+          description: 2FA enrolled for the first time; returns base64 QR to configure TOTP
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSecurity2FAQr'
+        '400': { description: Bad Request; Invalid email or password format }
+        '401': { description: Unauthorized; Invalid credentials or invalid 2FA token }
+        '500': { description: Internal Server Error }
+
+  /user-security/logout:
+    post:
+      tags: [user-security]
+      summary: UserSecurity logout
+      operationId: userSecurity-logout
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200':
+          description: OK; Cookie cleared
+          headers:
+            Set-Cookie:
+              description: Session cookie cleared
+              schema: { type: string }
+              example: >
+                token=; HttpOnly; Path=/; Max-Age=0; SameSite=Strict
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiMessage' }
+        '401': { description: Unauthorized; Missing or invalid session cookie }
+        '500': { description: Internal Server Error }
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: token
+      description: Session cookie for user authentication named `token`
+
+  schemas:
+    ApiMessage:
+      type: object
+      properties:
+        message: { type: string }
+
+    UserLogin:
+      description: User login
+      type: object
+      required: [email, user_password]
+      properties:
+        email:
+          type: string
+          format: email
+          description: User's email address
+        user_password:
+          type: string
+          format: password
+          description: User's password
+
+    UserRegister:
+      description: User registration
+      type: object
+      required: [first_name, last_name, email, user_password]
+      properties:
+        first_name: { type: string, description: User's first name }
+        last_name: { type: string, description: User's last name }
+        email: { type: string, format: email, description: User's email address }
+        user_password:
+          type: string
+          format: password
+          description: User's password
+
+    UserGoogleLogin:
+      description: User login with Google
+      type: object
+      required: [credential]
+      properties:
+        credential:
+          type: string
+          description: Google authentication token
+
+    UserSafe:
+      type: object
+      properties:
+        id: { type: integer }
+        first_name: { type: string }
+        last_name: { type: string }
+        email: { type: string, format: email }
+        phone: { type: string, nullable: true }
+        email_verified: { type: boolean }
+        register_time: { type: string, format: date-time }
+
+    ProfileResponse:
+      type: object
+      properties:
+        message: { type: string }
+        data:
+          type: object
+          properties:
+            id: { type: integer }
+            first_name: { type: string }
+            last_name: { type: string }
+            email: { type: string, format: email }
+            phone: { type: string, nullable: true }
+            email_verified: { type: boolean }
+            register_time: { type: string, format: date-time }
+            roles:
+              type: array
+              items: { type: string }
+
+    GoogleLoginResponse:
+      type: object
+      properties:
+        message: { type: string }
+        data:
+          $ref: '#/components/schemas/UserSafe'
+
+    UserSecurity2FARequired:
+      type: object
+      properties:
+        requires2FA: { type: boolean }
+        message: { type: string }
+
+    UserSecurity2FAQr:
+      type: object
+      properties:
+        requires2FA: { type: boolean }
+        message: { type: string }
+        QRCode: { type: string, description: Data URL (image/png) of the QR }
