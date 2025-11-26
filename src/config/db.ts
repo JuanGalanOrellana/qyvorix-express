@@ -11,7 +11,7 @@ export const initPool = (config: any) => {
     waitForConnections: true,
     connectionLimit: config.connectionLimit ?? 10,
     queueLimit: 0,
-    timezone: 'Z',
+    timezone: 'local',
   });
 };
 

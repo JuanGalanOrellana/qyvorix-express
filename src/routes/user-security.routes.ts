@@ -9,7 +9,12 @@ import userSecurityController from '@/controllers/user-security.controller';
 
 const userSecurityRouter = Router();
 
-userSecurityRouter.post('/login', validateUserSecurityLogin, validateLogin2FA, userSecurityController.login2faUserSecurity);
+userSecurityRouter.post(
+  '/login',
+  validateUserSecurityLogin,
+  validateLogin2FA,
+  userSecurityController.login2faUserSecurity
+);
 userSecurityRouter.use(validateUserSecurity, loadRoles);
 userSecurityRouter.post('/logout', userSecurityController.logoutUserSecurity);
 

@@ -3,7 +3,6 @@ import { queryInsertion, queryRows } from '@/config/db';
 import { insertRow, updateRow } from '@/helpers';
 import bcrypt from 'bcrypt';
 
-// Interfaces
 export interface User {
   id: number;
   first_name: string;

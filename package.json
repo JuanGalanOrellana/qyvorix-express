@@ -60,6 +60,7 @@
     "google-auth-library": "^10.2.0",
     "jsonwebtoken": "^9.0.2",
     "mysql2": "^3.14.2",
+    "node-cron": "^4.2.1",
     "otplib": "^12.0.1",
     "qrcode": "^1.5.4"
   },
