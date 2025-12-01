@@ -49,8 +49,14 @@ export const recordParticipationMw = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const user = res.locals.user as { id: number };
-    const question = res.locals.question as { id: number };
+    const answerId = res.locals.createdAnswerId as number | undefined;
+    const user = res.locals.user as { id: number } | undefined;
+    const question = res.locals.question as { id: number } | undefined;
+
+    if (!answerId || !user || !question) {
+      next();
+      return;
+    }
 
     await Participations.ensureUserStats(user.id);
     await Participations.recordParticipation(user.id, question.id);

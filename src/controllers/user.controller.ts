@@ -7,6 +7,7 @@ import { assignRoleToUserByName } from '@/models/role';
 import { insertRow } from '@/helpers';
 import crypto from 'crypto';
 import { queryRows, queryInsertion } from '@/config/db';
+import { attachAnonAnswersAndParticipations } from '@/helpers/userAnswers';
 
 function randomToken() {
   return crypto.randomBytes(32).toString('hex');
@@ -23,8 +24,12 @@ export const register: RequestHandler = async (req, res) => {
   try {
     const createdUser = await User.createUser(user);
     await assignRoleToUserByName(createdUser.insertId, 'USER');
+
     const token = createJwt({ id: createdUser.insertId }, process.env.JWT_SECRET!, 1);
     res.cookie('token', token, cookieOptions(req));
+
+    await attachAnonAnswersAndParticipations(req, createdUser.insertId);
+
     res.status(201).json({ message: 'User registered successfully' });
   } catch (error) {
     console.error('[register]', error);
@@ -37,6 +42,9 @@ export const login: RequestHandler = async (req, res) => {
     const userId = res.locals.id;
     const token = createJwt({ id: userId }, process.env.JWT_SECRET!, 1);
     res.cookie('token', token, cookieOptions(req));
+
+    await attachAnonAnswersAndParticipations(req, userId);
+
     res.status(200).json({ message: 'Login successful' });
   } catch (error) {
     console.error('[login]', error);
@@ -188,7 +196,9 @@ export const googleLogin: RequestHandler = async (req, res) => {
       res.status(403).json({ message: 'Google account not verified' });
       return;
     }
+
     const q = await User.getByEmail(payload.email);
+
     if (q.length === 0) {
       const created = await User.createUser({
         first_name: payload.given_name || 'NoName',
@@ -204,8 +214,12 @@ export const googleLogin: RequestHandler = async (req, res) => {
         email_verified: true,
       });
       await assignRoleToUserByName(created.insertId, 'USER');
+
       const token = createJwt({ id: created.insertId }, process.env.JWT_SECRET!, 1);
       res.cookie('token', token, cookieOptions(req));
+
+      await attachAnonAnswersAndParticipations(req, created.insertId);
+
       const [user] = await User.getById(created.insertId);
       const { user_password, ...safe } = user as any;
       res.status(201).json({ message: 'User created and logged in successfully', data: safe });
@@ -217,6 +231,9 @@ export const googleLogin: RequestHandler = async (req, res) => {
       }
       const token = createJwt({ id: q[0].id }, process.env.JWT_SECRET!, 1);
       res.cookie('token', token, cookieOptions(req));
+
+      await attachAnonAnswersAndParticipations(req, q[0].id);
+
       const [user] = await User.getById(q[0].id);
       const { user_password, ...safe } = user as any;
       res.status(200).json({ message: 'User logged in successfully', data: safe });

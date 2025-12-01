@@ -13,10 +13,6 @@ export interface QuestionRow extends RowDataPacket {
   created_at: string | Date;
 }
 
-interface LastDateRow extends RowDataPacket {
-  last: string | null;
-}
-
 export const createQuestion = (
   data: Omit<QuestionRow, 'id' | 'status' | 'created_at'> & {
     status?: QuestionRow['status'];
@@ -56,7 +52,6 @@ export async function getNextPublishedDate(): Promise<string> {
     [tomorrow, tomorrow]
   );
 
-  // Si no hay ninguna futura, usamos "mañana"
   return row?.next ?? tomorrow;
 }
 

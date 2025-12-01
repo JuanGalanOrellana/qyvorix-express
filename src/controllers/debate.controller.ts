@@ -3,6 +3,7 @@ import { RowDataPacket } from 'mysql2';
 import * as Questions from '@/models/questions';
 import Answers from '@/models/answers';
 import { queryRows } from '@/config/db';
+import { getClientIp } from '@/middlewares/answer.middleware';
 
 interface QuestionHeadRow extends RowDataPacket {
   status: string;
@@ -187,6 +188,36 @@ const getResults: RequestHandler = async (req, res): Promise<void> => {
   }
 };
 
+const getMyAnswer: RequestHandler = async (req, res) => {
+  try {
+    const qid = Number(req.params.id);
+    const user = res.locals.user as { id: number } | undefined;
+
+    if (Number.isNaN(qid) || qid <= 0) {
+      res.status(400).json({ message: 'Invalid question id' });
+      return;
+    }
+
+    let answer = null;
+
+    if (user) {
+      const rows = await Answers.getMyAnswer(qid, user.id);
+      answer = rows[0] ?? null;
+    } else {
+      const ip = getClientIp(req);
+      if (ip) {
+        const rows = await Answers.getAnswerByIp(qid, ip);
+        answer = rows[0] ?? null;
+      }
+    }
+
+    res.status(200).json({ answered: !!answer, answer });
+  } catch (e) {
+    console.error('[getMyAnswer]', e);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
 const debateController = {
   getActiveQuestion,
   answerGuest,
@@ -196,6 +227,7 @@ const debateController = {
   getTopAnswers,
   listAnswers,
   getResults,
+  getMyAnswer,
 };
 
 export default debateController;

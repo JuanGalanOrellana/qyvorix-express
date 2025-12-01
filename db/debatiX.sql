@@ -101,7 +101,7 @@ CREATE TABLE answers (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   question_id BIGINT UNSIGNED NOT NULL,
   user_id BIGINT UNSIGNED NULL,
-  anonymous_key VARCHAR(64) NULL,
+  ip_address VARCHAR(45) NULL,
   side ENUM('A','B') NOT NULL,
   body VARCHAR(280) NOT NULL,
   likes_count INT UNSIGNED NOT NULL DEFAULT 0,
@@ -109,8 +109,9 @@ CREATE TABLE answers (
   INDEX idx_answers_q (question_id),
   INDEX idx_answers_user (user_id),
   INDEX idx_answers_side (side),
-  INDEX idx_answers_anon (anonymous_key),
+  INDEX idx_answers_ip (ip_address),
   INDEX idx_answers_q_side_likes (question_id, side, likes_count DESC),
+  UNIQUE KEY uq_answers_user_once_per_question (question_id, user_id),
   CONSTRAINT fk_answers_question
     FOREIGN KEY (question_id) REFERENCES questions(id)
     ON DELETE CASCADE ON UPDATE CASCADE,
