@@ -5,10 +5,6 @@ USE debatiX;
 SET NAMES utf8mb4;
 SET time_zone = '+00:00';
 
--- =========================
---  USERS & SECURITY
--- =========================
-
 CREATE TABLE users (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   first_name VARCHAR(100) NOT NULL,
@@ -71,14 +67,12 @@ CREATE TABLE email_verifications (
   used TINYINT(1) NOT NULL DEFAULT 0,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_ev_token_hash (token_hash),
+  INDEX idx_ev_user (user_id),
+  INDEX idx_ev_expires (expires_at),
   CONSTRAINT fk_email_ver_user
     FOREIGN KEY (user_id) REFERENCES users(id)
     ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- =========================
---  QUESTIONS
--- =========================
 
 CREATE TABLE questions (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -92,16 +86,10 @@ CREATE TABLE questions (
   INDEX idx_questions_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-
--- =========================
---  ANSWERS & LIKES
--- =========================
-
 CREATE TABLE answers (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   question_id BIGINT UNSIGNED NOT NULL,
   user_id BIGINT UNSIGNED NULL,
-  ip_address VARCHAR(45) NULL,
   side ENUM('A','B') NOT NULL,
   body VARCHAR(280) NOT NULL,
   likes_count INT UNSIGNED NOT NULL DEFAULT 0,
@@ -109,7 +97,6 @@ CREATE TABLE answers (
   INDEX idx_answers_q (question_id),
   INDEX idx_answers_user (user_id),
   INDEX idx_answers_side (side),
-  INDEX idx_answers_ip (ip_address),
   INDEX idx_answers_q_side_likes (question_id, side, likes_count DESC),
   UNIQUE KEY uq_answers_user_once_per_question (question_id, user_id),
   CONSTRAINT fk_answers_question
@@ -152,10 +139,6 @@ BEGIN
   WHERE id = OLD.answer_id;
 END$$
 DELIMITER ;
-
--- =========================
---  PARTICIPATIONS & STATS
--- =========================
 
 CREATE TABLE participations (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -213,41 +196,6 @@ CREATE TABLE daily_user_influence (
     FOREIGN KEY (user_id) REFERENCES users(id)
     ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- (season_user_influence eliminado)
-
--- =========================
---  BADGES
--- =========================
-
-CREATE TABLE badges (
-  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  code VARCHAR(64) NOT NULL UNIQUE,
-  name VARCHAR(120) NOT NULL,
-  description VARCHAR(300) NOT NULL,
-  rarity ENUM('common','rare','epic','legendary') NOT NULL DEFAULT 'common',
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE user_badges (
-  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  user_id BIGINT UNSIGNED NOT NULL,
-  badge_id BIGINT UNSIGNED NOT NULL,
-  granted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  meta_json JSON NULL,
-  UNIQUE KEY uq_user_badge_once (user_id, badge_id),
-  INDEX idx_badges_user (user_id),
-  CONSTRAINT fk_user_badges_user
-    FOREIGN KEY (user_id) REFERENCES users(id)
-    ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT fk_user_badges_badge
-    FOREIGN KEY (badge_id) REFERENCES badges(id)
-    ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- =========================
---  VIEWS
--- =========================
 
 CREATE OR REPLACE VIEW v_top_answers_by_side AS
 SELECT

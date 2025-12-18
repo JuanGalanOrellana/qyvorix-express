@@ -22,7 +22,6 @@ const VALID_COLUMNS: Record<string, string[]> = {
     'id',
     'question_id',
     'user_id',
-    'ip_address',
     'side',
     'body',
     'likes_count',
@@ -49,9 +48,6 @@ const VALID_COLUMNS: Record<string, string[]> = {
     'rank_position',
     'created_at',
   ],
-  season_user_influence: ['id', 'season_id', 'user_id', 'likes_sum', 'rank_position', 'created_at'],
-  badges: ['id', 'code', 'name', 'description', 'rarity', 'created_at'],
-  user_badges: ['id', 'user_id', 'badge_id', 'granted_at', 'meta_json'],
 };
 
 const VALID_TABLES = new Set(Object.keys(VALID_COLUMNS));

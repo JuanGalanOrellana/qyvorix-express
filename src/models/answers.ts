@@ -6,7 +6,6 @@ export interface AnswerRow extends RowDataPacket {
   id: number;
   question_id: number;
   user_id: number | null;
-  ip_address: string | null;
   side: 'A' | 'B';
   body: string;
   likes_count: number;
@@ -72,7 +71,7 @@ export const listByQuestion = async (
 
   params.push(limit, offset);
   return queryRows<AnswerRow>(
-    `SELECT id, question_id, user_id, ip_address, side, body, likes_count, created_at
+    `SELECT id, question_id, user_id, side, body, likes_count, created_at
      FROM answers
      WHERE ${where.join(' AND ')}
      ORDER BY ${order}
@@ -91,16 +90,6 @@ export const getMyAnswer = (questionId: number, userId: number) =>
     [questionId, userId]
   );
 
-export const getAnswerByIp = (questionId: number, ip: string) =>
-  queryRows<AnswerRow>(
-    `SELECT *
-     FROM answers
-     WHERE question_id = ?
-       AND ip_address = ?
-     LIMIT 1`,
-    [questionId, ip]
-  );
-
 export default {
   createAnswer,
   getAnswersByQuestion,
@@ -110,5 +99,4 @@ export default {
   getUserLikesForQuestion,
   listByQuestion,
   getMyAnswer,
-  getAnswerByIp,
 };

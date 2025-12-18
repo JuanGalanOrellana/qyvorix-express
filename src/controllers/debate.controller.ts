@@ -3,7 +3,6 @@ import { RowDataPacket } from 'mysql2';
 import * as Questions from '@/models/questions';
 import Answers from '@/models/answers';
 import { queryRows } from '@/config/db';
-import { getClientIp } from '@/middlewares/answer.middleware';
 
 interface QuestionHeadRow extends RowDataPacket {
   status: string;
@@ -32,7 +31,7 @@ const getActiveQuestion: RequestHandler = async (_req, res): Promise<void> => {
   }
 };
 
-const answerGuest: RequestHandler = async (_req, res): Promise<void> => {
+const answer: RequestHandler = async (_req, res): Promise<void> => {
   try {
     const id = res.locals.createdAnswerId as number | undefined;
     if (!id) {
@@ -40,27 +39,9 @@ const answerGuest: RequestHandler = async (_req, res): Promise<void> => {
       return;
     }
     res.status(201).json({ message: 'Answer created', id });
-    return;
   } catch (e) {
-    console.error('[answerGuest]', e);
+    console.error('[answer]', e);
     res.status(500).json({ message: 'Internal Server Error' });
-    return;
-  }
-};
-
-const answerAuth: RequestHandler = async (_req, res): Promise<void> => {
-  try {
-    const id = res.locals.createdAnswerId as number | undefined;
-    if (!id) {
-      res.status(400).json({ message: 'Answer not created' });
-      return;
-    }
-    res.status(201).json({ message: 'Answer created', id });
-    return;
-  } catch (e) {
-    console.error('[answerAuth]', e);
-    res.status(500).json({ message: 'Internal Server Error' });
-    return;
   }
 };
 
@@ -198,18 +179,13 @@ const getMyAnswer: RequestHandler = async (req, res) => {
       return;
     }
 
-    let answer = null;
-
-    if (user) {
-      const rows = await Answers.getMyAnswer(qid, user.id);
-      answer = rows[0] ?? null;
-    } else {
-      const ip = getClientIp(req);
-      if (ip) {
-        const rows = await Answers.getAnswerByIp(qid, ip);
-        answer = rows[0] ?? null;
-      }
+    if (!user) {
+      res.status(401).json({ message: 'Authentication required' });
+      return;
     }
+
+    const rows = await Answers.getMyAnswer(qid, user.id);
+    const answer = rows[0] ?? null;
 
     res.status(200).json({ answered: !!answer, answer });
   } catch (e) {
@@ -220,8 +196,7 @@ const getMyAnswer: RequestHandler = async (req, res) => {
 
 const debateController = {
   getActiveQuestion,
-  answerGuest,
-  answerAuth,
+  answer,
   likeAnswer,
   unlikeAnswer,
   getTopAnswers,

@@ -21,21 +21,13 @@ debateRouter.get('/question/active', loadActiveQuestion, debateController.getAct
 
 debateRouter.post(
   '/question/:id/answer',
-  requireActiveQuestionById,
-  validateCreateAnswer,
-  createAnswerMw,
-  debateController.answerGuest
-);
-
-debateRouter.post(
-  '/auth/question/:id/answer',
   validateUser,
   requireActiveQuestionById,
   preventDuplicateParticipation,
   validateCreateAnswer,
   createAnswerMw,
   recordParticipationMw,
-  debateController.answerAuth
+  debateController.answer
 );
 
 debateRouter.post(
@@ -63,6 +55,6 @@ debateRouter.get('/question/:id/answers', debateController.listAnswers);
 
 debateRouter.get('/question/:id/results', debateController.getResults);
 
-debateRouter.get('/question/:id/my-answer', debateController.getMyAnswer);
+debateRouter.get('/question/:id/my-answer', validateUser, debateController.getMyAnswer);
 
 export default debateRouter;

@@ -59,30 +59,3 @@ export const verifyToken = async (_req: Request, res: Response, next: NextFuncti
     return;
   }
 };
-
-export const verifyResetToken = async (_req: Request, res: Response, next: NextFunction) => {
-  try {
-    const decoded = jwt.verify(
-      res.locals.resetToken as string,
-      process.env.JWT_SECRET!
-    ) as JwtPayload;
-
-    const queryResult = await User.getById(decoded.id);
-
-    if (queryResult.length === 0) {
-      res.status(404).json({ message: 'User not found' });
-      return;
-    }
-
-    res.locals = {
-      ...res.locals,
-      id: queryResult[0].id,
-    };
-
-    next();
-  } catch (error) {
-    console.log(error);
-    res.status(401).json({ message: 'Not Authorized' });
-    return;
-  }
-};
