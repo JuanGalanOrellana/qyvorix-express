@@ -28,7 +28,6 @@ const VALID_COLUMNS: Record<string, string[]> = {
     'created_at',
   ],
   answer_likes: ['id', 'answer_id', 'user_id', 'created_at'],
-  participations: ['id', 'user_id', 'question_id', 'created_at'],
   user_stats: [
     'user_id',
     'total_xp',

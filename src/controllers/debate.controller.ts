@@ -106,13 +106,17 @@ const listAnswers: RequestHandler = async (req, res): Promise<void> => {
       res.status(400).json({ message: 'Invalid question id' });
       return;
     }
+
     const side = req.query.side as 'A' | 'B' | undefined;
     const sort =
       (req.query.sort as 'likes_desc' | 'likes_asc' | 'new' | 'old' | undefined) ?? 'new';
     const limit = Math.min(Number(req.query.limit ?? 20), 50);
     const offset = Number(req.query.offset ?? 0);
 
-    const rows = await Answers.listByQuestion(qid, side, sort, limit, offset);
+    const userId = (res.locals?.user?.id as number | undefined) ?? null;
+
+    const rows = await Answers.listByQuestion(qid, userId, side, sort, limit, offset);
+
     res.status(200).json({ question_id: qid, count: rows.length, data: rows });
     return;
   } catch (e) {

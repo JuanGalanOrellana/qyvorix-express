@@ -12,6 +12,8 @@ export interface AnswerRow extends RowDataPacket {
   created_at: string;
 }
 
+export type AnswerUiRow = AnswerRow & { likedByMe: 0 | 1 };
+
 export const createAnswer = (data: Omit<AnswerRow, 'id' | 'likes_count' | 'created_at'>) =>
   insertRow('answers', data);
 
@@ -48,34 +50,49 @@ export const getUserLikesForQuestion = (questionId: number, userId: number) =>
 
 export const listByQuestion = async (
   qid: number,
+  userId: number | null,
   side?: 'A' | 'B',
   sort: 'likes_desc' | 'likes_asc' | 'new' | 'old' = 'new',
   limit = 20,
   offset = 0
-): Promise<AnswerRow[]> => {
-  const where = ['question_id = ?'];
+): Promise<AnswerUiRow[]> => {
+  const where = ['a.question_id = ?'];
   const params: any[] = [qid];
+
   if (side) {
-    where.push('side = ?');
+    where.push('a.side = ?');
     params.push(side);
   }
 
   const order =
     sort === 'likes_desc'
-      ? 'likes_count DESC, id DESC'
+      ? 'a.likes_count DESC, a.id DESC'
       : sort === 'likes_asc'
-      ? 'likes_count ASC, id ASC'
+      ? 'a.likes_count ASC, a.id ASC'
       : sort === 'old'
-      ? 'created_at ASC, id ASC'
-      : 'created_at DESC, id DESC';
+      ? 'a.created_at ASC, a.id ASC'
+      : 'a.created_at DESC, a.id DESC';
+
+  const join =
+    userId != null
+      ? 'LEFT JOIN answer_likes al ON al.answer_id = a.id AND al.user_id = ?'
+      : 'LEFT JOIN answer_likes al ON 1=0';
+
+  if (userId != null) params.unshift(userId);
 
   params.push(limit, offset);
-  return queryRows<AnswerRow>(
-    `SELECT id, question_id, user_id, side, body, likes_count, created_at
-     FROM answers
-     WHERE ${where.join(' AND ')}
-     ORDER BY ${order}
-     LIMIT ? OFFSET ?`,
+
+  return queryRows<AnswerUiRow>(
+    `
+    SELECT
+      a.id, a.question_id, a.user_id, a.side, a.body, a.likes_count, a.created_at,
+      CASE WHEN al.id IS NULL THEN 0 ELSE 1 END AS likedByMe
+    FROM answers a
+    ${join}
+    WHERE ${where.join(' AND ')}
+    ORDER BY ${order}
+    LIMIT ? OFFSET ?
+    `,
     params
   );
 };

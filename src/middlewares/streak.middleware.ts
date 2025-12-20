@@ -1,6 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
 import { queryInsertion, queryRows } from '@/config/db';
-import Participations from '@/models/participations';
 
 function todayInMadrid(): string {
   const fmt = new Intl.DateTimeFormat('en-CA', {
@@ -18,32 +17,31 @@ function daysBetween(d1: string, d2: string): number {
   return Math.round((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24));
 }
 
-export const preventDuplicateParticipation = async (
-  _req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
-  try {
-    const user = res.locals.user as { id: number };
-    const question = res.locals.question as { id: number };
-    const rows = await queryRows<any>(
-      'SELECT id FROM participations WHERE user_id = ? AND question_id = ? LIMIT 1',
-      [user.id, question.id]
-    );
-    if (rows.length) {
-      res.status(409).json({ message: 'Already participated in this question' });
-      return;
-    }
-    next();
-    return;
-  } catch (e) {
-    console.error('[preventDuplicateParticipation]', e);
-    res.status(500).json({ message: 'Internal Server Error' });
-    return;
-  }
-};
+async function ensureUserStats(userId: number) {
+  await queryInsertion(
+    `INSERT INTO user_stats (user_id, total_xp, influence_total, power_majority_hits, power_participations, streak_days, weekly_grace_tokens)
+     VALUES (?, 0, 0, 0, 0, 0, 1)
+     ON DUPLICATE KEY UPDATE user_id = user_id`,
+    [userId]
+  );
+}
 
-export const recordParticipationMw = async (
+async function getUserStats(userId: number) {
+  const rows = await queryRows<any>('SELECT * FROM user_stats WHERE user_id = ? LIMIT 1', [userId]);
+  return rows[0] ?? null;
+}
+
+async function applyStreakAndXp(userId: number, today: string, newStreakDays: number) {
+  const xpToday = Math.min(0.5 * newStreakDays, 3.5);
+  await queryInsertion(
+    `UPDATE user_stats
+     SET streak_days = ?, total_xp = ROUND(total_xp + ?, 1), last_participation_date = ?
+     WHERE user_id = ?`,
+    [newStreakDays, xpToday, today, userId]
+  );
+}
+
+export const applyStreakOnAnswerMw = async (
   _req: Request,
   res: Response,
   next: NextFunction
@@ -51,18 +49,17 @@ export const recordParticipationMw = async (
   try {
     const answerId = res.locals.createdAnswerId as number | undefined;
     const user = res.locals.user as { id: number } | undefined;
-    const question = res.locals.question as { id: number } | undefined;
 
-    if (!answerId || !user || !question) {
+    if (!answerId || !user) {
       next();
       return;
     }
 
-    await Participations.ensureUserStats(user.id);
-    await Participations.recordParticipation(user.id, question.id);
-
     const today = todayInMadrid();
-    const [stats] = await Participations.getUserStats(user.id);
+
+    await ensureUserStats(user.id);
+
+    const stats = await getUserStats(user.id);
     const last = (stats?.last_participation_date as string | null) ?? null;
 
     let newStreak = Number(stats?.streak_days || 0);
@@ -91,7 +88,7 @@ export const recordParticipationMw = async (
 
     if (newStreak < 1) newStreak = 1;
 
-    await Participations.applyStreakAndXp(user.id, today, newStreak);
+    await applyStreakAndXp(user.id, today, newStreak);
 
     if (Number(stats?.weekly_grace_tokens ?? 1) !== grace) {
       await queryInsertion('UPDATE user_stats SET weekly_grace_tokens = ? WHERE user_id = ?', [
@@ -103,7 +100,7 @@ export const recordParticipationMw = async (
     next();
     return;
   } catch (e) {
-    console.error('[recordParticipationMw]', e);
+    console.error('[applyStreakOnAnswerMw]', e);
     res.status(500).json({ message: 'Internal Server Error' });
     return;
   }

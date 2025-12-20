@@ -59,3 +59,22 @@ export const verifyToken = async (_req: Request, res: Response, next: NextFuncti
     return;
   }
 };
+
+export const tryValidateUser = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const token = (req as any).cookies?.token;
+    if (!token) return next();
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as JwtPayload;
+
+    const rows = await User.getById(decoded.id);
+    if (!rows.length) {
+      return next();
+    }
+
+    res.locals.user = rows[0];
+    return next();
+  } catch (_e) {
+    return next();
+  }
+};

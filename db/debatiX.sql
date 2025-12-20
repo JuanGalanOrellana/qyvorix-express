@@ -140,22 +140,6 @@ BEGIN
 END$$
 DELIMITER ;
 
-CREATE TABLE participations (
-  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  user_id BIGINT UNSIGNED NOT NULL,
-  question_id BIGINT UNSIGNED NOT NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY uq_participation_once (user_id, question_id),
-  INDEX idx_participations_user (user_id),
-  INDEX idx_participations_question (question_id),
-  CONSTRAINT fk_participations_user
-    FOREIGN KEY (user_id) REFERENCES users(id)
-    ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT fk_participations_question
-    FOREIGN KEY (question_id) REFERENCES questions(id)
-    ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
 CREATE TABLE user_stats (
   user_id BIGINT UNSIGNED PRIMARY KEY,
   total_xp DECIMAL(8,1) NOT NULL DEFAULT 0.0,

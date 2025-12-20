@@ -1,7 +1,8 @@
 import { RowDataPacket } from 'mysql2';
-import { queryRows, queryInsertion } from '@/config/db';
+import { queryRows } from '@/config/db';
 import { insertRow, updateRow } from '@/helpers';
 import { getTomorrowDateIso } from '@/utils/date';
+import { settleQuestionPower } from '@/models/power';
 
 export interface QuestionRow extends RowDataPacket {
   id: number;
@@ -9,7 +10,7 @@ export interface QuestionRow extends RowDataPacket {
   option_a: string;
   option_b: string;
   published_date: string;
-  status: 'scheduled' | 'active' | 'closed';
+  status: 'scheduled' | 'active' | 'closed' | 'archived';
   created_at: string | Date;
 }
 
@@ -60,7 +61,7 @@ async function getNextDueQuestion(): Promise<QuestionRow | null> {
     SELECT *
     FROM questions
     WHERE status = 'scheduled'
-      AND published_date <= CURRENT_DATE()
+      AND published_date <= DATE(CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', 'Europe/Madrid'))
     ORDER BY published_date ASC, id ASC
     LIMIT 1
   `);
@@ -68,8 +69,24 @@ async function getNextDueQuestion(): Promise<QuestionRow | null> {
   return rows[0] ?? null;
 }
 
+async function closeActiveAndSettle(): Promise<void> {
+  const [active] = await queryRows<QuestionRow>(`
+    SELECT *
+    FROM questions
+    WHERE status = 'active'
+    ORDER BY published_date DESC, id DESC
+    LIMIT 1
+  `);
+
+  if (!active) return;
+
+  await settleQuestionPower(active.id);
+
+  await updateRow('questions', { status: 'closed' }, 'id = ? AND status = "active"', [active.id]);
+}
+
 export const activateNextDue = async (): Promise<void> => {
-  await queryInsertion(`UPDATE questions SET status = 'closed' WHERE status = 'active'`);
+  await closeActiveAndSettle();
 
   const next = await getNextDueQuestion();
   if (!next) return;
