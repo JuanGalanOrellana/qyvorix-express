@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
+import { RowDataPacket } from 'mysql2/promise';
 import { queryInsertion, queryRows } from '@/config/db';
+import { ensureUserStats } from '@/models/user-stats';
 
 function todayInMadrid(): string {
   const fmt = new Intl.DateTimeFormat('en-CA', {
@@ -17,28 +19,19 @@ function daysBetween(d1: string, d2: string): number {
   return Math.round((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24));
 }
 
-async function ensureUserStats(userId: number) {
-  await queryInsertion(
-    `INSERT INTO user_stats (user_id, total_xp, influence_total, power_majority_hits, power_participations, streak_days, weekly_grace_tokens)
-     VALUES (?, 0, 0, 0, 0, 0, 1)
-     ON DUPLICATE KEY UPDATE user_id = user_id`,
-    [userId]
-  );
-}
+type StatsRow = RowDataPacket & {
+  user_id: number;
+  total_xp: number;
+  streak_days: number;
+  last_participation_date: string | null;
+  weekly_grace_tokens: number;
+};
 
-async function getUserStats(userId: number) {
-  const rows = await queryRows<any>('SELECT * FROM user_stats WHERE user_id = ? LIMIT 1', [userId]);
+async function getUserStats(userId: number): Promise<StatsRow | null> {
+  const rows = await queryRows<StatsRow>('SELECT * FROM user_stats WHERE user_id = ? LIMIT 1', [
+    userId,
+  ]);
   return rows[0] ?? null;
-}
-
-async function applyStreakAndXp(userId: number, today: string, newStreakDays: number) {
-  const xpToday = Math.min(0.5 * newStreakDays, 3.5);
-  await queryInsertion(
-    `UPDATE user_stats
-     SET streak_days = ?, total_xp = ROUND(total_xp + ?, 1), last_participation_date = ?
-     WHERE user_id = ?`,
-    [newStreakDays, xpToday, today, userId]
-  );
 }
 
 export const applyStreakOnAnswerMw = async (
@@ -60,41 +53,64 @@ export const applyStreakOnAnswerMw = async (
     await ensureUserStats(user.id);
 
     const stats = await getUserStats(user.id);
-    const last = (stats?.last_participation_date as string | null) ?? null;
-
-    let newStreak = Number(stats?.streak_days || 0);
-    let grace = Number(stats?.weekly_grace_tokens ?? 1);
-
-    if (last === today) {
+    if (!stats) {
       next();
       return;
     }
 
-    if (!last) {
-      newStreak = 1;
-    } else {
+    const last = stats.last_participation_date;
+    let newStreak = Number(stats.streak_days || 0);
+    let grace = Number(stats.weekly_grace_tokens ?? 1);
+
+    let dailyXp = 0;
+    let usedComeback = false;
+
+    if (last === today) {
+      dailyXp = 0;
+    } else if (last) {
       const gap = daysBetween(last, today);
+
       if (gap === 1) {
         newStreak = newStreak + 1;
+        dailyXp = 5;
       } else if (gap > 1) {
         if (grace > 0) {
           grace -= 1;
           newStreak = newStreak + 1;
+          dailyXp = 5;
         } else {
-          newStreak = Math.floor(newStreak / 2) || 1;
+          usedComeback = true;
+          newStreak = 1;
+          dailyXp = 3;
         }
       }
+    } else {
+      newStreak = 1;
+      dailyXp = 5;
     }
 
-    if (newStreak < 1) newStreak = 1;
+    await queryInsertion(
+      `
+      UPDATE user_stats
+      SET
+        streak_days = ?,
+        weekly_grace_tokens = ?,
+        last_participation_date = ?,
+        total_xp = total_xp + ?
+      WHERE user_id = ?
+      `,
+      [newStreak, grace, last === today ? stats.last_participation_date : today, dailyXp, user.id]
+    );
 
-    await applyStreakAndXp(user.id, today, newStreak);
+    await queryInsertion(`UPDATE user_stats SET total_xp = total_xp + 10 WHERE user_id = ?`, [
+      user.id,
+    ]);
 
-    if (Number(stats?.weekly_grace_tokens ?? 1) !== grace) {
-      await queryInsertion('UPDATE user_stats SET weekly_grace_tokens = ? WHERE user_id = ?', [
-        grace,
-        user.id,
-      ]);
+    if (usedComeback) {
+      await queryInsertion(
+        `UPDATE user_stats SET weekly_grace_tokens = weekly_grace_tokens WHERE user_id = ?`,
+        [user.id]
+      );
     }
 
     next();

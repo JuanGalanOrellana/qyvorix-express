@@ -9,6 +9,8 @@ CREATE TABLE users (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   first_name VARCHAR(100) NOT NULL,
   last_name VARCHAR(100) NOT NULL,
+  display_name VARCHAR(80) NULL,
+  avatar_url VARCHAR(500) NULL,
   email VARCHAR(150) NOT NULL UNIQUE,
   user_password VARCHAR(255) NOT NULL,
   phone VARCHAR(50),
@@ -122,27 +124,9 @@ CREATE TABLE answer_likes (
     ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-DELIMITER $$
-CREATE TRIGGER trg_answer_likes_after_insert
-AFTER INSERT ON answer_likes FOR EACH ROW
-BEGIN
-  UPDATE answers
-  SET likes_count = likes_count + 1
-  WHERE id = NEW.answer_id;
-END$$
-
-CREATE TRIGGER trg_answer_likes_after_delete
-AFTER DELETE ON answer_likes FOR EACH ROW
-BEGIN
-  UPDATE answers
-  SET likes_count = GREATEST(likes_count - 1, 0)
-  WHERE id = OLD.answer_id;
-END$$
-DELIMITER ;
-
 CREATE TABLE user_stats (
   user_id BIGINT UNSIGNED PRIMARY KEY,
-  total_xp DECIMAL(8,1) NOT NULL DEFAULT 0.0,
+  total_xp INT UNSIGNED NOT NULL DEFAULT 0,
   influence_total INT UNSIGNED NOT NULL DEFAULT 0,
   power_majority_hits INT UNSIGNED NOT NULL DEFAULT 0,
   power_participations INT UNSIGNED NOT NULL DEFAULT 0,
@@ -162,6 +146,40 @@ CREATE TABLE user_stats (
     FOREIGN KEY (user_id) REFERENCES users(id)
     ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+DELIMITER $$
+
+CREATE TRIGGER trg_answer_likes_after_insert
+AFTER INSERT ON answer_likes FOR EACH ROW
+BEGIN
+  UPDATE answers
+  SET likes_count = likes_count + 1
+  WHERE id = NEW.answer_id;
+
+  UPDATE user_stats s
+  JOIN answers a ON a.id = NEW.answer_id
+  SET
+    s.total_xp = s.total_xp + 2,
+    s.influence_total = s.influence_total + 1
+  WHERE s.user_id = a.user_id AND a.user_id IS NOT NULL;
+END$$
+
+CREATE TRIGGER trg_answer_likes_after_delete
+AFTER DELETE ON answer_likes FOR EACH ROW
+BEGIN
+  UPDATE answers
+  SET likes_count = GREATEST(likes_count - 1, 0)
+  WHERE id = OLD.answer_id;
+
+  UPDATE user_stats s
+  JOIN answers a ON a.id = OLD.answer_id
+  SET
+    s.total_xp = GREATEST(s.total_xp - 2, 0),
+    s.influence_total = GREATEST(s.influence_total - 1, 0)
+  WHERE s.user_id = a.user_id AND a.user_id IS NOT NULL;
+END$$
+
+DELIMITER ;
 
 CREATE TABLE daily_user_influence (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -198,7 +216,7 @@ FROM answers a;
 CREATE OR REPLACE VIEW v_global_influence_ranking AS
 SELECT 
   u.id AS user_id,
-  CONCAT(u.first_name, ' ', u.last_name) AS user_name,
+  COALESCE(u.display_name, CONCAT(u.first_name, ' ', u.last_name)) AS user_name,
   s.influence_total,
   DENSE_RANK() OVER (ORDER BY s.influence_total DESC, u.id ASC) AS rank_position
 FROM users u

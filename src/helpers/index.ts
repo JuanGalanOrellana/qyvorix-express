@@ -6,9 +6,11 @@ const VALID_COLUMNS: Record<string, string[]> = {
     'id',
     'first_name',
     'last_name',
+    'display_name',
     'email',
     'user_password',
     'phone',
+    'avatar_url',
     'email_verified',
     'register_time',
   ],
@@ -18,15 +20,7 @@ const VALID_COLUMNS: Record<string, string[]> = {
   password_resets: ['id', 'user_id', 'token_hash', 'expires_at', 'used', 'created_at'],
   email_verifications: ['id', 'user_id', 'token_hash', 'expires_at', 'used', 'created_at'],
   questions: ['id', 'text', 'option_a', 'option_b', 'published_date', 'status', 'created_at'],
-  answers: [
-    'id',
-    'question_id',
-    'user_id',
-    'side',
-    'body',
-    'likes_count',
-    'created_at',
-  ],
+  answers: ['id', 'question_id', 'user_id', 'side', 'body', 'likes_count', 'created_at'],
   answer_likes: ['id', 'answer_id', 'user_id', 'created_at'],
   user_stats: [
     'user_id',
@@ -81,7 +75,7 @@ export async function updateRow<T extends object>(
 
   const allowed = VALID_COLUMNS[table];
   const fieldsParts: string[] = [];
-  const values: any[] = [];
+  const values: unknown[] = [];
 
   for (const [key, value] of entries) {
     if (!allowed.includes(key)) throw new Error(`Invalid column for ${table}: ${key}`);
@@ -106,7 +100,7 @@ export async function insertRow<T extends object>(
   const allowed = VALID_COLUMNS[table];
   const fields: string[] = [];
   const placeholders: string[] = [];
-  const values: any[] = [];
+  const values: unknown[] = [];
 
   for (const [key, value] of entries) {
     if (!allowed.includes(key)) throw new Error(`Invalid column for ${table}: ${key}`);
@@ -128,8 +122,9 @@ export async function insertAllRows<T extends object>(
   if (!VALID_TABLES.has(table)) throw new Error('Invalid table');
   if (!Array.isArray(data) || data.length === 0) throw new Error('No rows provided to insert.');
 
-  // validate that every row has the same set of keys
-  const keys = Object.keys(data[0]).filter((k) => (data[0] as any)[k] !== undefined);
+  const keys = Object.keys(data[0]).filter(
+    (k) => (data[0] as Record<string, unknown>)[k] !== undefined
+  );
   if (keys.length === 0) throw new Error('No fields provided to insert.');
 
   const allowed = VALID_COLUMNS[table];
@@ -140,7 +135,7 @@ export async function insertAllRows<T extends object>(
   const placeholdersGroup = `(${keys.map(() => '?').join(',')})`;
   const allPlaceholders = data.map(() => placeholdersGroup).join(',');
 
-  const values = data.flatMap((row) => keys.map((k) => (row as any)[k]));
+  const values = data.flatMap((row) => keys.map((k) => (row as Record<string, unknown>)[k]));
   const sql = `INSERT INTO ${escapeId(table)} (${fieldsEsc}) VALUES ${allPlaceholders}`;
   return await queryInsertion<ResultSetHeader>(sql, values);
 }

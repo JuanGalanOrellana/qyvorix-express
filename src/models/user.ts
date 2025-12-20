@@ -7,14 +7,19 @@ export interface User {
   id: number;
   first_name: string;
   last_name: string;
+  display_name: string | null;
   email: string;
   user_password: string;
-  phone: string;
+  phone: string | null;
+  avatar_url: string | null;
   email_verified?: boolean;
   register_time: string;
 }
 
-export type UserRegister = Omit<User, 'id' | 'register_time' | 'phone'>;
+export type UserRegister = Omit<
+  User,
+  'id' | 'register_time' | 'phone' | 'avatar_url' | 'display_name'
+>;
 
 export type UserLogin = Pick<User, 'email' | 'user_password'>;
 
@@ -25,7 +30,6 @@ export type UserSensitiveData = Omit<
 
 export type UserResponse = User & RowDataPacket;
 
-// Methods
 const getByEmail = async (email: string): Promise<UserResponse[]> => {
   return await queryRows<UserResponse>('SELECT * FROM users WHERE email = ?', [email]);
 };
@@ -43,18 +47,18 @@ const createUser = async (user: UserRegister): Promise<ResultSetHeader> => {
   const bcryptSalt = bcrypt.genSaltSync(10);
   const passwordHash = bcrypt.hashSync(user.user_password, bcryptSalt);
 
-  const userData: UserRegister = {
+  const userData: UserRegister & { email_verified?: boolean } = {
     first_name: user.first_name,
     last_name: user.last_name,
     email: user.email,
     user_password: passwordHash,
   };
 
-  if (user.email_verified && user.email_verified === true) {
+  if ((user as unknown as { email_verified?: boolean }).email_verified === true) {
     userData.email_verified = true;
   }
 
-  return await insertRow<UserRegister>('users', userData);
+  return await insertRow<typeof userData>('users', userData);
 };
 
 const updateUserData = async (

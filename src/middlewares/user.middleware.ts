@@ -66,34 +66,12 @@ export const currentPasswordValid = async (req: Request, _res: Response, next: N
 
 const validSensitiveData = async (req: Request, _res: Response, next: NextFunction) => {
   const sensitiveData = [
-    body('first_name')
-      .optional()
-      .isString()
-      .bail()
-      .withMessage('First name must be a string')
-      .isLength({ min: 2 })
-      .withMessage('First name must be at least 2 characters long'),
-    body('last_name')
-      .optional()
-      .isString()
-      .bail()
-      .withMessage('Last name must be a string')
-      .isLength({ min: 2 })
-      .withMessage('Last name must be at least 2 characters long'),
-    body('address')
-      .optional()
-      .isString()
-      .bail()
-      .withMessage('Address must be a string')
-      .isLength({ min: 5 })
-      .withMessage('Address must be at least 5 characters long'),
-    body('phone')
-      .optional()
-      .isString()
-      .bail()
-      .withMessage('Phone number must be a string')
-      .isLength({ min: 9 })
-      .withMessage('Phone number must be at least 9 characters long'),
+    body('first_name').optional().isString().bail().isLength({ min: 2 }),
+    body('last_name').optional().isString().bail().isLength({ min: 2 }),
+    body('address').optional().isString().bail().isLength({ min: 5 }),
+    body('phone').optional().isString().bail().isLength({ min: 9 }),
+    body('display_name').optional().isString().bail().isLength({ min: 2, max: 80 }),
+    body('avatar_url').optional().isString().bail().isLength({ min: 5, max: 500 }),
   ];
 
   for (const validation of sensitiveData) {

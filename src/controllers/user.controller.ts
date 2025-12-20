@@ -10,6 +10,8 @@ import { queryRows, queryInsertion } from '@/config/db';
 import * as EmailVerifications from '@/models/email-verification';
 import { sendPasswordResetEmail, sendVerificationEmail } from '@/utils/mailer';
 import { hashCode, random6Digits } from '@/utils/emailCode';
+import { ensureUserStats } from '@/models/user-stats';
+import { UserMeRow } from '@/models/user-me';
 
 function randomToken() {
   return crypto.randomBytes(32).toString('hex');
@@ -58,6 +60,8 @@ export const register: RequestHandler = async (req, res) => {
     const createdUser = await User.createUser(user);
     await assignRoleToUserByName(createdUser.insertId, 'USER');
 
+    await ensureUserStats(createdUser.insertId);
+
     const { code } = await issueEmailVerificationCode(createdUser.insertId);
     await sendVerificationEmail(user.email.trim().toLowerCase(), code);
 
@@ -70,12 +74,12 @@ export const register: RequestHandler = async (req, res) => {
   }
 };
 
-export const login: RequestHandler = async (req, res) => {
+export const login: RequestHandler = async (_req, res) => {
   try {
     const userId = res.locals.user.id as number;
 
     const token = createJwt({ id: userId }, process.env.JWT_SECRET!, 1);
-    res.cookie('token', token, cookieOptions(req));
+    res.cookie('token', token, cookieOptions(_req));
 
     res.status(200).json({ message: 'Login successful' });
   } catch (error) {
@@ -93,18 +97,70 @@ export const getUserData: RequestHandler = async (_req, res) => {
   const id: number = res.locals.user.id;
 
   try {
-    const userData = await User.getById(id);
-    if (userData.length === 0) {
+    await ensureUserStats(id);
+
+    const rows = await queryRows<UserMeRow>(
+      `
+      SELECT
+        u.id,
+        u.first_name,
+        u.last_name,
+        u.display_name,
+        u.avatar_url,
+        u.email,
+        u.email_verified,
+        u.register_time,
+        s.total_xp,
+        s.influence_total,
+        s.power_majority_hits,
+        s.power_participations,
+        s.power_pct,
+        s.streak_days,
+        s.last_participation_date,
+        s.weekly_grace_tokens,
+        s.updated_at
+      FROM users u
+      LEFT JOIN user_stats s ON s.user_id = u.id
+      WHERE u.id = ?
+      LIMIT 1
+      `,
+      [id]
+    );
+
+    const me = rows[0];
+    if (!me) {
       res.status(404).json({ message: 'User not found' });
       return;
     }
 
-    const { user_password, ...safe } = userData[0];
-    const roles = res.locals.roles ?? [];
+    const roles = (res.locals.roles ?? []) as string[];
 
     res.status(200).json({
       message: 'User data obtained successfully',
-      data: { ...safe, roles },
+      data: {
+        id: me.id,
+        first_name: me.first_name,
+        last_name: me.last_name,
+        display_name: me.display_name,
+        avatar_url: me.avatar_url,
+        email: me.email,
+        email_verified:
+          me.email_verified === true || me.email_verified === 1 || me.email_verified === '1',
+        register_time: me.register_time,
+        roles,
+        stats: {
+          user_id: me.id,
+          total_xp: Number(me.total_xp ?? 0),
+          influence_total: Number(me.influence_total ?? 0),
+          power_majority_hits: Number(me.power_majority_hits ?? 0),
+          power_participations: Number(me.power_participations ?? 0),
+          power_pct: Number(me.power_pct ?? 0),
+          streak_days: Number(me.streak_days ?? 0),
+          last_participation_date: me.last_participation_date ?? null,
+          weekly_grace_tokens: Number(me.weekly_grace_tokens ?? 0),
+          updated_at: me.updated_at,
+        },
+      },
     });
   } catch (error) {
     console.error('[getUserData]', error);
@@ -114,10 +170,18 @@ export const getUserData: RequestHandler = async (_req, res) => {
 
 export const updateUserData: RequestHandler = async (req, res) => {
   const id = res.locals.user.id;
-  const user: Partial<UserSensitiveData> = req.body;
+  const body = req.body as Partial<UserSensitiveData>;
+
+  const patch: Partial<UserSensitiveData> = {
+    first_name: body.first_name,
+    last_name: body.last_name,
+    phone: body.phone,
+    display_name: body.display_name?.trim() ? body.display_name.trim() : null,
+    avatar_url: body.avatar_url?.trim() ? body.avatar_url.trim() : null,
+  };
 
   try {
-    const r = await User.updateUserData(id, user);
+    const r = await User.updateUserData(id, patch);
     if (!r || r.affectedRows === 0) {
       res.status(404).json({ message: 'User not found' });
       return;
@@ -351,6 +415,7 @@ export const googleLogin: RequestHandler = async (req, res) => {
       });
 
       await assignRoleToUserByName(created.insertId, 'USER');
+      await ensureUserStats(created.insertId);
       setSessionCookie(created.insertId);
 
       const [user] = await User.getById(created.insertId);
@@ -367,6 +432,8 @@ export const googleLogin: RequestHandler = async (req, res) => {
     if (!isVerified) {
       await User.verifyEmail(q[0].email);
     }
+
+    await ensureUserStats(q[0].id);
 
     setSessionCookie(q[0].id);
 
