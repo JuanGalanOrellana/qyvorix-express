@@ -22,7 +22,7 @@ export async function sendVerificationEmail(to: string, code: string) {
   await getTransporter().sendMail({
     from: env('SMTP_FROM'),
     to,
-    subject: 'Código de verificación – DebatiX',
+    subject: 'Código de verificación – Qyvorix',
     text: `Tu código de verificación es: ${code}`,
   });
 }
@@ -31,7 +31,7 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string) {
   await getTransporter().sendMail({
     from: env('SMTP_FROM'),
     to,
-    subject: 'Restablecer contraseña – DebatiX',
+    subject: 'Restablecer contraseña – Qyvorix',
     text: `Para restablecer tu contraseña abre este enlace: ${resetUrl}`,
   });
 }

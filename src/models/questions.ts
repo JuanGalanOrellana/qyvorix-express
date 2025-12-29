@@ -56,6 +56,23 @@ export async function getNextPublishedDate(): Promise<string> {
   return row?.next ?? tomorrow;
 }
 
+function todayInMadridIso(): string {
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Madrid',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  return fmt.format(new Date());
+}
+
+function toIsoDate(d: unknown): string {
+  if (!d) return '';
+  if (typeof d === 'string') return d.slice(0, 10);
+  if (d instanceof Date) return d.toISOString().slice(0, 10);
+  return String(d).slice(0, 10);
+}
+
 async function getNextDueQuestion(): Promise<QuestionRow | null> {
   const rows = await queryRows<QuestionRow>(`
     SELECT *
@@ -95,8 +112,20 @@ export const activateNextDue = async (): Promise<void> => {
 };
 
 export const getOrActivateActive = async (): Promise<QuestionRow[]> => {
+  const today = todayInMadridIso();
+
   const current = await getActiveQuestion();
-  if (current.length) return current;
+  if (current.length) {
+    const active = current[0];
+    const published = toIsoDate(active.published_date);
+
+    if (published && published < today) {
+      await activateNextDue();
+      return getActiveQuestion();
+    }
+
+    return current;
+  }
 
   await activateNextDue();
   return getActiveQuestion();

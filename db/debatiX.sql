@@ -1,6 +1,6 @@
-DROP DATABASE IF EXISTS debatiX;
-CREATE DATABASE debatiX CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE debatiX;
+DROP DATABASE IF EXISTS qyvorix;
+CREATE DATABASE qyvorix CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE qyvorix;
 
 SET NAMES utf8mb4;
 SET time_zone = '+00:00';

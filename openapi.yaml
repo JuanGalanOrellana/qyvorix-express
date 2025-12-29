@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
-  title: DebatiX API
-  description: API for DebatiX application
+  title: Qyvorix API
+  description: API for Qyvorix application
   version: 1.1.0
 servers:
   - description: Development server

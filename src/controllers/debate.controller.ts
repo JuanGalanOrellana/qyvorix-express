@@ -1,6 +1,5 @@
 import { RequestHandler } from 'express';
 import { RowDataPacket } from 'mysql2';
-import * as Questions from '@/models/questions';
 import Answers from '@/models/answers';
 import { queryRows } from '@/config/db';
 
@@ -15,19 +14,32 @@ interface SideCountRow extends RowDataPacket {
   total: number;
 }
 
+type MyAnswersRow = {
+  answer_id: number;
+  side: 'A' | 'B';
+  body: string;
+  likes_count: number;
+  created_at: string;
+  likedByMe: 0 | 1;
+  question_id: number;
+  text: string;
+  option_a: string;
+  option_b: string;
+  published_date: string;
+  status: 'scheduled' | 'active' | 'closed' | 'archived';
+};
+
 const getActiveQuestion: RequestHandler = async (_req, res): Promise<void> => {
   try {
-    const rows = await Questions.getActiveQuestion();
-    if (!rows.length) {
+    const q = res.locals.question;
+    if (!q) {
       res.status(404).json({ message: 'No active question' });
       return;
     }
-    res.status(200).json({ data: rows[0] });
-    return;
+    res.status(200).json({ data: q });
   } catch (e) {
     console.error('[getActiveQuestion]', e);
     res.status(500).json({ message: 'Internal Server Error' });
-    return;
   }
 };
 
@@ -49,22 +61,18 @@ const likeAnswer: RequestHandler = async (_req, res): Promise<void> => {
   try {
     const created = Boolean(res.locals.liked);
     res.status(created ? 201 : 200).json({ message: created ? 'Liked' : 'Already liked' });
-    return;
   } catch (e) {
     console.error('[likeAnswer]', e);
     res.status(500).json({ message: 'Internal Server Error' });
-    return;
   }
 };
 
 const unlikeAnswer: RequestHandler = async (_req, res): Promise<void> => {
   try {
     res.status(200).json({ message: 'Unliked' });
-    return;
   } catch (e) {
     console.error('[unlikeAnswer]', e);
     res.status(500).json({ message: 'Internal Server Error' });
-    return;
   }
 };
 
@@ -91,11 +99,9 @@ const getTopAnswers: RequestHandler = async (req, res): Promise<void> => {
     ]);
 
     res.status(200).json({ question_id: qid, topA, topB });
-    return;
   } catch (e) {
     console.error('[getTopAnswers]', e);
     res.status(500).json({ message: 'Internal Server Error' });
-    return;
   }
 };
 
@@ -111,18 +117,16 @@ const listAnswers: RequestHandler = async (req, res): Promise<void> => {
     const sort =
       (req.query.sort as 'likes_desc' | 'likes_asc' | 'new' | 'old' | undefined) ?? 'new';
     const limit = Math.min(Number(req.query.limit ?? 20), 50);
-    const offset = Number(req.query.offset ?? 0);
+    const offset = Math.max(0, Number(req.query.offset ?? 0));
 
     const userId = (res.locals?.user?.id as number | undefined) ?? null;
 
     const rows = await Answers.listByQuestion(qid, userId, side, sort, limit, offset);
 
     res.status(200).json({ question_id: qid, count: rows.length, data: rows });
-    return;
   } catch (e) {
     console.error('[listAnswers]', e);
     res.status(500).json({ message: 'Internal Server Error' });
-    return;
   }
 };
 
@@ -165,15 +169,13 @@ const getResults: RequestHandler = async (req, res): Promise<void> => {
       totals: { A: totalA, B: totalB, total },
       percentages: { A: pctA, B: pctB },
     });
-    return;
   } catch (e) {
     console.error('[getResults]', e);
     res.status(500).json({ message: 'Internal Server Error' });
-    return;
   }
 };
 
-const getMyAnswer: RequestHandler = async (req, res) => {
+const getMyAnswer: RequestHandler = async (req, res): Promise<void> => {
   try {
     const qid = Number(req.params.id);
     const user = res.locals.user as { id: number } | undefined;
@@ -198,6 +200,63 @@ const getMyAnswer: RequestHandler = async (req, res) => {
   }
 };
 
+const getMyAnswers: RequestHandler = async (req, res): Promise<void> => {
+  try {
+    const user = res.locals.user as { id: number } | undefined;
+    if (!user) {
+      res.status(401).json({ message: 'Authentication required' });
+      return;
+    }
+
+    const limit = Math.min(Number(req.query.limit ?? 20), 50);
+    const offset = Math.max(0, Number(req.query.offset ?? 0));
+
+    const rows = await Answers.listMine(user.id, limit, offset);
+
+    const answerIds = rows.map((r) => r.answer_id);
+    const likedSet =
+      answerIds.length > 0
+        ? new Set<number>(
+            (
+              await queryRows<RowDataPacket & { answer_id: number }>(
+                `SELECT answer_id
+               FROM answer_likes
+               WHERE user_id = ?
+                 AND answer_id IN (${answerIds.map(() => '?').join(',')})`,
+                [user.id, ...answerIds]
+              )
+            ).map((x) => Number(x.answer_id))
+          )
+        : new Set<number>();
+
+    const data = (rows as unknown as MyAnswersRow[]).map((r) => ({
+      question: {
+        id: r.question_id,
+        text: r.text,
+        option_a: r.option_a,
+        option_b: r.option_b,
+        published_date: r.published_date,
+        status: r.status,
+      },
+      answer: {
+        id: r.answer_id,
+        question_id: r.question_id,
+        user_id: user.id,
+        side: r.side,
+        body: r.body,
+        likes_count: r.likes_count,
+        created_at: r.created_at,
+        likedByMe: likedSet.has(r.answer_id) ? 1 : 0,
+      },
+    }));
+
+    res.status(200).json({ count: data.length, data });
+  } catch (e) {
+    console.error('[getMyAnswers]', e);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
 const debateController = {
   getActiveQuestion,
   answer,
@@ -207,6 +266,7 @@ const debateController = {
   listAnswers,
   getResults,
   getMyAnswer,
+  getMyAnswers,
 };
 
 export default debateController;

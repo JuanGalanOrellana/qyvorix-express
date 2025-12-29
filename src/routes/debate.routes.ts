@@ -54,4 +54,6 @@ debateRouter.get('/question/:id/results', debateController.getResults);
 
 debateRouter.get('/question/:id/my-answer', validateUser, debateController.getMyAnswer);
 
+debateRouter.get('/my-answers', validateUser, loadRoles, debateController.getMyAnswers);
+
 export default debateRouter;
