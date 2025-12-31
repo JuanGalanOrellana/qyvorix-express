@@ -36,6 +36,22 @@ export type AnswerUiRow = AnswerRow & {
   author_avatar_url: string | null;
 };
 
+export type UserDailyAnswerRow = RowDataPacket & {
+  answer_id: number;
+  side: 'A' | 'B';
+  body: string;
+  likes_count: number;
+  created_at: string;
+  likedByMe: 0 | 1;
+
+  question_id: number;
+  text: string;
+  option_a: string;
+  option_b: string;
+  published_date: string;
+  status: 'scheduled' | 'active' | 'closed' | 'archived';
+};
+
 export const createAnswer = (data: Omit<AnswerRow, 'id' | 'likes_count' | 'created_at'>) =>
   insertRow('answers', data);
 
@@ -44,7 +60,7 @@ export const getAnswersByQuestion = (questionId: number) =>
 
 export const getTopAnswersBySide = (questionId: number, side: 'A' | 'B', limit = 10) =>
   queryRows<AnswerRow>(
-    `SELECT * FROM answers WHERE question_id = ? AND side = ? 
+    `SELECT * FROM answers WHERE question_id = ? AND side = ?
      ORDER BY likes_count DESC, id ASC LIMIT ?`,
     [questionId, side, limit]
   );
@@ -63,7 +79,7 @@ export const unlikeAnswer = (answerId: number, userId: number) =>
 
 export const getUserLikesForQuestion = (questionId: number, userId: number) =>
   queryRows<RowDataPacket>(
-    `SELECT al.* 
+    `SELECT al.*
      FROM answer_likes al
      JOIN answers a ON a.id = al.answer_id
      WHERE a.question_id = ? AND al.user_id = ?`,
@@ -160,6 +176,49 @@ export const listMine = (userId: number, limit = 20, offset = 0) =>
     [userId, limit, offset]
   );
 
+export const listUserDaily = async (
+  targetUserId: number,
+  viewerUserId: number | null,
+  limit = 20,
+  offset = 0
+): Promise<UserDailyAnswerRow[]> => {
+  const joinLikes =
+    viewerUserId != null
+      ? 'LEFT JOIN answer_likes al ON al.answer_id = a.id AND al.user_id = ?'
+      : 'LEFT JOIN answer_likes al ON 1=0';
+
+  const params: unknown[] = [];
+  if (viewerUserId != null) params.push(viewerUserId);
+
+  params.push(targetUserId, limit, offset);
+
+  return queryRows<UserDailyAnswerRow>(
+    `
+    SELECT
+      a.id AS answer_id,
+      a.side,
+      a.body,
+      a.likes_count,
+      a.created_at,
+      CASE WHEN al.id IS NULL THEN 0 ELSE 1 END AS likedByMe,
+
+      q.id AS question_id,
+      q.text,
+      q.option_a,
+      q.option_b,
+      q.published_date,
+      q.status
+    FROM answers a
+    ${joinLikes}
+    JOIN questions q ON q.id = a.question_id
+    WHERE a.user_id = ?
+    ORDER BY q.published_date DESC, a.id DESC
+    LIMIT ? OFFSET ?
+    `,
+    params
+  );
+};
+
 export default {
   createAnswer,
   getAnswersByQuestion,
@@ -170,4 +229,5 @@ export default {
   listByQuestion,
   getMyAnswer,
   listMine,
+  listUserDaily,
 };

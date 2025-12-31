@@ -13,9 +13,16 @@ function todayInMadrid(): string {
   return fmt.format(new Date());
 }
 
-function daysBetween(d1: string, d2: string): number {
-  const a = new Date(d1 + 'T00:00:00Z');
-  const b = new Date(d2 + 'T00:00:00Z');
+function toIsoDate(d: unknown): string | null {
+  if (!d) return null;
+  if (typeof d === 'string') return d.slice(0, 10);
+  if (d instanceof Date) return d.toISOString().slice(0, 10);
+  return String(d).slice(0, 10);
+}
+
+function daysBetweenIso(d1Iso: string, d2Iso: string): number {
+  const a = new Date(`${d1Iso}T00:00:00Z`);
+  const b = new Date(`${d2Iso}T00:00:00Z`);
   return Math.round((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24));
 }
 
@@ -23,7 +30,7 @@ type StatsRow = RowDataPacket & {
   user_id: number;
   total_xp: number;
   streak_days: number;
-  last_participation_date: string | null;
+  last_participation_date: string | Date | null;
   weekly_grace_tokens: number;
 };
 
@@ -32,6 +39,12 @@ async function getUserStats(userId: number): Promise<StatsRow | null> {
     userId,
   ]);
   return rows[0] ?? null;
+}
+
+function calcAnswerXp(streakDays: number, usedComeback: boolean): number {
+  const base = usedComeback ? 10 : 12;
+  const bonus = Math.min(60, Math.max(0, streakDays - 1) * 2);
+  return base + bonus;
 }
 
 export const applyStreakOnAnswerMw = async (
@@ -58,36 +71,47 @@ export const applyStreakOnAnswerMw = async (
       return;
     }
 
-    const last = stats.last_participation_date;
+    const lastIso = toIsoDate(stats.last_participation_date);
     let newStreak = Number(stats.streak_days || 0);
     let grace = Number(stats.weekly_grace_tokens ?? 1);
 
-    let dailyXp = 0;
     let usedComeback = false;
 
-    if (last === today) {
-      dailyXp = 0;
-    } else if (last) {
-      const gap = daysBetween(last, today);
+    if (lastIso === today) {
+      const xpAdd = calcAnswerXp(newStreak || 1, false);
+      await queryInsertion(
+        `
+        UPDATE user_stats
+        SET total_xp = total_xp + ?
+        WHERE user_id = ?
+        `,
+        [xpAdd, user.id]
+      );
+      next();
+      return;
+    }
+
+    if (lastIso) {
+      const gap = daysBetweenIso(lastIso, today);
 
       if (gap === 1) {
-        newStreak = newStreak + 1;
-        dailyXp = 5;
+        newStreak = Math.max(1, newStreak) + 1;
       } else if (gap > 1) {
         if (grace > 0) {
           grace -= 1;
-          newStreak = newStreak + 1;
-          dailyXp = 5;
+          newStreak = Math.max(1, newStreak) + 1;
         } else {
           usedComeback = true;
           newStreak = 1;
-          dailyXp = 3;
         }
+      } else {
+        newStreak = Math.max(1, newStreak);
       }
     } else {
       newStreak = 1;
-      dailyXp = 5;
     }
+
+    const xpAdd = calcAnswerXp(newStreak, usedComeback);
 
     await queryInsertion(
       `
@@ -99,19 +123,8 @@ export const applyStreakOnAnswerMw = async (
         total_xp = total_xp + ?
       WHERE user_id = ?
       `,
-      [newStreak, grace, last === today ? stats.last_participation_date : today, dailyXp, user.id]
+      [newStreak, grace, today, xpAdd, user.id]
     );
-
-    await queryInsertion(`UPDATE user_stats SET total_xp = total_xp + 10 WHERE user_id = ?`, [
-      user.id,
-    ]);
-
-    if (usedComeback) {
-      await queryInsertion(
-        `UPDATE user_stats SET weekly_grace_tokens = weekly_grace_tokens WHERE user_id = ?`,
-        [user.id]
-      );
-    }
 
     next();
     return;

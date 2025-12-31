@@ -1,6 +1,6 @@
 import { RequestHandler } from 'express';
 import { RowDataPacket } from 'mysql2';
-import Answers from '@/models/answers';
+import Answers, { AnswerUiRow } from '@/models/answers';
 import { queryRows } from '@/config/db';
 
 interface QuestionHeadRow extends RowDataPacket {
@@ -28,6 +28,46 @@ type MyAnswersRow = {
   published_date: string;
   status: 'scheduled' | 'active' | 'closed' | 'archived';
 };
+
+type PublicUserProfileRow = RowDataPacket & {
+  id: number;
+  first_name: string | null;
+  last_name: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+  total_xp: number | null;
+  influence_total: number | null;
+  power_participations: number | null;
+  power_pct: number | null;
+  streak_days: number | null;
+};
+
+function toBool(v: unknown) {
+  return v === 1 || v === true || v === '1';
+}
+
+function mapAnswerRow(r: AnswerUiRow) {
+  return {
+    id: r.id,
+    question_id: r.question_id,
+    user_id: r.user_id,
+    side: r.side,
+    body: r.body,
+    likes_count: Number(r.likes_count ?? 0),
+    created_at: r.created_at,
+    likedByMe: toBool(r.likedByMe),
+    user:
+      r.author_id != null
+        ? {
+            id: r.author_id,
+            display_name: r.author_display_name,
+            first_name: r.author_first_name,
+            last_name: r.author_last_name,
+            avatar_url: r.author_avatar_url,
+          }
+        : null,
+  };
+}
 
 const getActiveQuestion: RequestHandler = async (_req, res): Promise<void> => {
   try {
@@ -122,8 +162,9 @@ const listAnswers: RequestHandler = async (req, res): Promise<void> => {
     const userId = (res.locals?.user?.id as number | undefined) ?? null;
 
     const rows = await Answers.listByQuestion(qid, userId, side, sort, limit, offset);
+    const data = rows.map(mapAnswerRow);
 
-    res.status(200).json({ question_id: qid, count: rows.length, data: rows });
+    res.status(200).json({ question_id: qid, count: data.length, data });
   } catch (e) {
     console.error('[listAnswers]', e);
     res.status(500).json({ message: 'Internal Server Error' });
@@ -220,9 +261,9 @@ const getMyAnswers: RequestHandler = async (req, res): Promise<void> => {
             (
               await queryRows<RowDataPacket & { answer_id: number }>(
                 `SELECT answer_id
-               FROM answer_likes
-               WHERE user_id = ?
-                 AND answer_id IN (${answerIds.map(() => '?').join(',')})`,
+                 FROM answer_likes
+                 WHERE user_id = ?
+                   AND answer_id IN (${answerIds.map(() => '?').join(',')})`,
                 [user.id, ...answerIds]
               )
             ).map((x) => Number(x.answer_id))
@@ -257,6 +298,106 @@ const getMyAnswers: RequestHandler = async (req, res): Promise<void> => {
   }
 };
 
+const getUserProfile: RequestHandler = async (req, res): Promise<void> => {
+  try {
+    const userId = Number(req.params.userId);
+    if (Number.isNaN(userId) || userId <= 0) {
+      res.status(400).json({ message: 'Invalid user id' });
+      return;
+    }
+
+    const rows = await queryRows<PublicUserProfileRow>(
+      `
+      SELECT
+        u.id,
+        u.first_name,
+        u.last_name,
+        u.display_name,
+        u.avatar_url,
+        s.total_xp,
+        s.influence_total,
+        s.power_participations,
+        s.power_pct,
+        s.streak_days
+      FROM users u
+      LEFT JOIN user_stats s ON s.user_id = u.id
+      WHERE u.id = ?
+      LIMIT 1
+      `,
+      [userId]
+    );
+
+    const u = rows[0];
+    if (!u) {
+      res.status(404).json({ message: 'User not found' });
+      return;
+    }
+
+    res.status(200).json({
+      data: {
+        id: u.id,
+        display_name: u.display_name,
+        first_name: u.first_name,
+        last_name: u.last_name,
+        avatar_url: u.avatar_url,
+        stats: {
+          total_xp: Number(u.total_xp ?? 0),
+          influence_total: Number(u.influence_total ?? 0),
+          power_participations: Number(u.power_participations ?? 0),
+          power_pct: Number(u.power_pct ?? 0),
+          streak_days: Number(u.streak_days ?? 0),
+        },
+      },
+    });
+  } catch (e) {
+    console.error('[getUserProfile]', e);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+const getUserAnswers: RequestHandler = async (req, res): Promise<void> => {
+  try {
+    const userId = Number(req.params.userId);
+    if (Number.isNaN(userId) || userId <= 0) {
+      res.status(400).json({ message: 'Invalid user id' });
+      return;
+    }
+
+    const limit = Math.min(Number(req.query.limit ?? 20), 50);
+    const offset = Math.max(0, Number(req.query.offset ?? 0));
+
+    const viewerId = (res.locals?.user?.id as number | undefined) ?? null;
+
+    const rows = await Answers.listUserDaily(userId, viewerId, limit, offset);
+
+    const data = rows.map((r) => ({
+      question: {
+        id: r.question_id,
+        text: r.text,
+        option_a: r.option_a,
+        option_b: r.option_b,
+        published_date: r.published_date,
+        status: r.status,
+      },
+      answer: {
+        id: r.answer_id,
+        question_id: r.question_id,
+        user_id: userId,
+        side: r.side,
+        body: r.body,
+        likes_count: r.likes_count,
+        created_at: r.created_at,
+        likedByMe: r.likedByMe,
+      },
+    }));
+
+    res.status(200).json({ count: data.length, data });
+  } catch (e) {
+    console.error('[getUserAnswers]', e);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
 const debateController = {
   getActiveQuestion,
   answer,
@@ -267,6 +408,8 @@ const debateController = {
   getResults,
   getMyAnswer,
   getMyAnswers,
+  getUserProfile,
+  getUserAnswers,
 };
 
 export default debateController;
