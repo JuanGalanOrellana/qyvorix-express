@@ -339,6 +339,9 @@ const getUserProfile: RequestHandler = async (req, res): Promise<void> => {
       return;
     }
 
+    const viewerId = (res.locals?.user?.id as number | undefined) ?? null;
+    const isSelf = viewerId != null && viewerId === userId;
+
     const rows = await queryRows<PublicUserProfileRow>(
       `
       SELECT
@@ -370,8 +373,8 @@ const getUserProfile: RequestHandler = async (req, res): Promise<void> => {
       data: {
         id: u.id,
         display_name: u.display_name,
-        first_name: u.first_name,
-        last_name: u.last_name,
+        first_name: isSelf ? u.first_name : null,
+        last_name: isSelf ? u.last_name : null,
         avatar_url: u.avatar_url,
         stats: {
           total_xp: Number(u.total_xp ?? 0),

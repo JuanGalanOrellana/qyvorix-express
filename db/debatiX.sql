@@ -10,7 +10,7 @@ CREATE TABLE users (
   first_name VARCHAR(100) NOT NULL,
   last_name VARCHAR(100) NOT NULL,
   display_name VARCHAR(80) NULL,
-  avatar_url VARCHAR(500) NULL,
+  avatar_url LONGTEXT NULL,
   email VARCHAR(150) NOT NULL UNIQUE,
   user_password VARCHAR(255) NOT NULL,
   phone VARCHAR(50),
