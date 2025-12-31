@@ -52,6 +52,27 @@ export type UserDailyAnswerRow = RowDataPacket & {
   status: 'scheduled' | 'active' | 'closed' | 'archived';
 };
 
+export type LikedAnswerRow = RowDataPacket & {
+  answer_id: number;
+  side: 'A' | 'B';
+  body: string;
+  likes_count: number;
+  created_at: string;
+
+  question_id: number;
+  text: string;
+  option_a: string;
+  option_b: string;
+  published_date: string;
+  status: 'scheduled' | 'active' | 'closed' | 'archived';
+
+  author_id: number | null;
+  author_display_name: string | null;
+  author_first_name: string | null;
+  author_last_name: string | null;
+  author_avatar_url: string | null;
+};
+
 export const createAnswer = (data: Omit<AnswerRow, 'id' | 'likes_count' | 'created_at'>) =>
   insertRow('answers', data);
 
@@ -219,6 +240,57 @@ export const listUserDaily = async (
   );
 };
 
+export const listLikedDaily = async (
+  targetUserId: number,
+  viewerUserId: number | null,
+  limit = 20,
+  offset = 0
+): Promise<LikedAnswerRow[]> => {
+  const params: unknown[] = [];
+  if (viewerUserId != null) params.push(viewerUserId);
+
+  params.push(targetUserId, limit, offset);
+
+  return queryRows<LikedAnswerRow>(
+    `
+    SELECT
+      a.id AS answer_id,
+      a.side,
+      a.body,
+      a.likes_count,
+      a.created_at,
+
+      q.id AS question_id,
+      q.text,
+      q.option_a,
+      q.option_b,
+      q.published_date,
+      q.status,
+
+      u.id AS author_id,
+      u.display_name AS author_display_name,
+      u.first_name AS author_first_name,
+      u.last_name AS author_last_name,
+      u.avatar_url AS author_avatar_url
+    FROM answer_likes al
+    JOIN answers a ON a.id = al.answer_id
+    JOIN questions q ON q.id = a.question_id
+    LEFT JOIN users u ON u.id = a.user_id
+    ${
+      viewerUserId != null
+        ? 'LEFT JOIN answer_likes al_me ON al_me.answer_id = a.id AND al_me.user_id = ?'
+        : ''
+    }
+    WHERE al.user_id = ?
+    ORDER BY q.published_date DESC, a.id DESC
+    LIMIT ? OFFSET ?
+    `,
+    viewerUserId != null
+      ? [viewerUserId, targetUserId, limit, offset]
+      : [targetUserId, limit, offset]
+  );
+};
+
 export default {
   createAnswer,
   getAnswersByQuestion,
@@ -230,4 +302,5 @@ export default {
   getMyAnswer,
   listMine,
   listUserDaily,
+  listLikedDaily,
 };

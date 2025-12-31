@@ -1,6 +1,6 @@
 import { RequestHandler } from 'express';
 import { RowDataPacket } from 'mysql2';
-import Answers, { AnswerUiRow } from '@/models/answers';
+import Answers, { AnswerUiRow, LikedAnswerRow } from '@/models/answers';
 import { queryRows } from '@/config/db';
 
 interface QuestionHeadRow extends RowDataPacket {
@@ -66,6 +66,39 @@ function mapAnswerRow(r: AnswerUiRow) {
             avatar_url: r.author_avatar_url,
           }
         : null,
+  };
+}
+
+function mapLikedRow(r: LikedAnswerRow) {
+  return {
+    question: {
+      id: r.question_id,
+      text: r.text,
+      option_a: r.option_a,
+      option_b: r.option_b,
+      published_date: r.published_date,
+      status: r.status,
+    },
+    answer: {
+      id: r.answer_id,
+      question_id: r.question_id,
+      user_id: r.author_id,
+      side: r.side,
+      body: r.body,
+      likes_count: Number(r.likes_count ?? 0),
+      created_at: r.created_at,
+      likedByMe: true,
+      user:
+        r.author_id != null
+          ? {
+              id: r.author_id,
+              display_name: r.author_display_name,
+              first_name: r.author_first_name,
+              last_name: r.author_last_name,
+              avatar_url: r.author_avatar_url,
+            }
+          : null,
+    },
   };
 }
 
@@ -387,13 +420,57 @@ const getUserAnswers: RequestHandler = async (req, res): Promise<void> => {
         body: r.body,
         likes_count: r.likes_count,
         created_at: r.created_at,
-        likedByMe: r.likedByMe,
+        likedByMe: toBool(r.likedByMe),
       },
     }));
 
     res.status(200).json({ count: data.length, data });
   } catch (e) {
     console.error('[getUserAnswers]', e);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+const getMyLikes: RequestHandler = async (req, res): Promise<void> => {
+  try {
+    const user = res.locals.user as { id: number } | undefined;
+    if (!user) {
+      res.status(401).json({ message: 'Authentication required' });
+      return;
+    }
+
+    const limit = Math.min(Number(req.query.limit ?? 20), 50);
+    const offset = Math.max(0, Number(req.query.offset ?? 0));
+
+    const rows = await Answers.listLikedDaily(user.id, user.id, limit, offset);
+    const data = rows.map(mapLikedRow);
+
+    res.status(200).json({ count: data.length, data });
+  } catch (e) {
+    console.error('[getMyLikes]', e);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+const getUserLikes: RequestHandler = async (req, res): Promise<void> => {
+  try {
+    const targetUserId = Number(req.params.userId);
+    if (Number.isNaN(targetUserId) || targetUserId <= 0) {
+      res.status(400).json({ message: 'Invalid user id' });
+      return;
+    }
+
+    const limit = Math.min(Number(req.query.limit ?? 20), 50);
+    const offset = Math.max(0, Number(req.query.offset ?? 0));
+
+    const viewerId = (res.locals?.user?.id as number | undefined) ?? null;
+
+    const rows = await Answers.listLikedDaily(targetUserId, viewerId, limit, offset);
+    const data = rows.map(mapLikedRow);
+
+    res.status(200).json({ count: data.length, data });
+  } catch (e) {
+    console.error('[getUserLikes]', e);
     res.status(500).json({ message: 'Internal Server Error' });
   }
 };
@@ -410,6 +487,8 @@ const debateController = {
   getMyAnswers,
   getUserProfile,
   getUserAnswers,
+  getMyLikes,
+  getUserLikes,
 };
 
 export default debateController;

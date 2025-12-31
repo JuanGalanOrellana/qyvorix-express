@@ -60,4 +60,8 @@ debateRouter.get('/users/:userId/profile', debateController.getUserProfile);
 
 debateRouter.get('/users/:userId/answers', tryValidateUser, debateController.getUserAnswers);
 
+debateRouter.get('/my-likes', validateUser, loadRoles, debateController.getMyLikes);
+
+debateRouter.get('/user/:userId/likes', tryValidateUser, debateController.getUserLikes);
+
 export default debateRouter;
