@@ -96,7 +96,7 @@ const check2FA = async (req: Request, res: Response, next: NextFunction) => {
       secret_2fa: secret2fa,
     });
 
-    const otpauth = authenticator.keyuri('', 'DebatiX: UserSecurity', secret2fa);
+    const otpauth = authenticator.keyuri('', 'Qyvorix: UserSecurity', secret2fa);
 
     let qrCodeUrl: string;
     try {

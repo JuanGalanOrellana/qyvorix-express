@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
-  title: DebatiX API
-  description: API for DebatiX application
-  version: 1.0.0
+  title: Qyvorix API
+  description: API for Qyvorix application
+  version: 1.1.0
 servers:
   - description: Development server
     url: http://localhost:8080
@@ -17,8 +17,7 @@ paths:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/UserLogin'
+            schema: { $ref: '#/components/schemas/UserLogin' }
       responses:
         '200':
           description: OK; Cookie set
@@ -26,8 +25,7 @@ paths:
             Set-Cookie:
               description: Session Cookie (en producción incluirá `Secure`)
               schema: { type: string }
-              example: >
-                token=abc123xyz; HttpOnly; Path=/; SameSite=Strict; Max-Age=86400
+              example: token=abc123xyz; HttpOnly; Path=/; SameSite=Strict; Max-Age=86400
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ApiMessage' }
@@ -45,8 +43,7 @@ paths:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/UserGoogleLogin'
+            schema: { $ref: '#/components/schemas/UserGoogleLogin' }
       responses:
         '200':
           description: OK; Cookie set
@@ -54,8 +51,7 @@ paths:
             Set-Cookie:
               description: Session Cookie (en producción incluirá `Secure`)
               schema: { type: string }
-              example: >
-                token=abc123xyz; HttpOnly; Path=/; SameSite=Strict; Max-Age=86400
+              example: token=abc123xyz; HttpOnly; Path=/; SameSite=Strict; Max-Age=86400
           content:
             application/json:
               schema: { $ref: '#/components/schemas/GoogleLoginResponse' }
@@ -65,8 +61,7 @@ paths:
             Set-Cookie:
               description: Session Cookie (en producción incluirá `Secure`)
               schema: { type: string }
-              example: >
-                token=abc123xyz; HttpOnly; Path=/; SameSite=Strict; Max-Age=86400
+              example: token=abc123xyz; HttpOnly; Path=/; SameSite=Strict; Max-Age=86400
           content:
             application/json:
               schema: { $ref: '#/components/schemas/GoogleLoginResponse' }
@@ -84,8 +79,7 @@ paths:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/UserRegister'
+            schema: { $ref: '#/components/schemas/UserRegister' }
       responses:
         '201':
           description: Created; Cookie set
@@ -93,8 +87,7 @@ paths:
             Set-Cookie:
               description: Session Cookie (en producción incluirá `Secure`)
               schema: { type: string }
-              example: >
-                token=abc123xyz; HttpOnly; Path=/; SameSite=Strict; Max-Age=86400
+              example: token=abc123xyz; HttpOnly; Path=/; SameSite=Strict; Max-Age=86400
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ApiMessage' }
@@ -115,8 +108,7 @@ paths:
             Set-Cookie:
               description: Session Cookie cleared
               schema: { type: string }
-              example: >
-                token=; HttpOnly; Path=/; Max-Age=0; SameSite=Strict
+              example: token=; HttpOnly; Path=/; Max-Age=0; SameSite=Strict
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ApiMessage' }
@@ -137,10 +129,7 @@ paths:
               type: object
               required: [email]
               properties:
-                email:
-                  type: string
-                  format: email
-                  description: User's email address
+                email: { type: string, format: email, description: User's email address }
       responses:
         '200':
           description: OK; Password reset email sent
@@ -180,13 +169,8 @@ paths:
               type: object
               required: [user_password, token]
               properties:
-                user_password:
-                  type: string
-                  format: password
-                  description: New password for the user
-                token:
-                  type: string
-                  description: Opaque token from the reset email (not JWT)
+                user_password: { type: string, format: password, description: New password }
+                token: { type: string, description: Opaque token from the reset email (not JWT) }
       responses:
         '200':
           description: OK; Password reset successfully
@@ -211,9 +195,9 @@ paths:
             schema:
               type: object
               properties:
-                first_name: { type: string, description: User's first name }
-                last_name: { type: string, description: User's last name }
-                phone: { type: string, description: User's phone number (optional) }
+                first_name: { type: string }
+                last_name: { type: string }
+                phone: { type: string }
       responses:
         '200':
           description: OK; Profile updated successfully
@@ -236,8 +220,7 @@ paths:
           description: OK; User profile retrieved successfully
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/ProfileResponse'
+              schema: { $ref: '#/components/schemas/ProfileResponse' }
         '401': { description: Unauthorized; No session cookie or invalid session }
         '404': { description: Not Found; User not found }
         '500': { description: Internal Server Error; Error retrieving profile }
@@ -277,11 +260,10 @@ paths:
                   properties:
                     token:
                       type: string
-                      description: >-
-                        TOTP code (6 digits). If omitted and the user has 2FA, the API will ask for it.
+                      description: TOTP code (6 digits). Si se omite y el usuario tiene 2FA, la API lo requerirá.
       responses:
         '200':
-          description: |
+          description: >
             OK;
             - Case A: requires 2FA (requires2FA=true, no cookie)
             - Case B: 2FA verified; cookie `token` set
@@ -289,8 +271,7 @@ paths:
             Set-Cookie:
               description: Session cookie (only in Case B; en producción incluirá `Secure`)
               schema: { type: string }
-              example: >
-                token=abc123xyz; HttpOnly; Path=/; SameSite=Strict; Max-Age=86400
+              example: token=abc123xyz; HttpOnly; Path=/; SameSite=Strict; Max-Age=86400
           content:
             application/json:
               schema:
@@ -301,8 +282,7 @@ paths:
           description: 2FA enrolled for the first time; returns base64 QR to configure TOTP
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/UserSecurity2FAQr'
+              schema: { $ref: '#/components/schemas/UserSecurity2FAQr' }
         '400': { description: Bad Request; Invalid email or password format }
         '401': { description: Unauthorized; Invalid credentials or invalid 2FA token }
         '500': { description: Internal Server Error }
@@ -320,12 +300,252 @@ paths:
             Set-Cookie:
               description: Session cookie cleared
               schema: { type: string }
-              example: >
-                token=; HttpOnly; Path=/; Max-Age=0; SameSite=Strict
+              example: token=; HttpOnly; Path=/; Max-Age=0; SameSite=Strict
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ApiMessage' }
         '401': { description: Unauthorized; Missing or invalid session cookie }
+        '500': { description: Internal Server Error }
+
+  /question:
+    post:
+      tags: [questions]
+      summary: Create a question (web)
+      description: Requiere usuario autenticado. **Se recomienda rol ADMIN**.
+      operationId: create-question
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/QuestionCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreatedIdResponse' }
+        '400': { description: Bad Request }
+        '401': { description: Unauthorized }
+        '500': { description: Internal Server Error }
+
+  /debate/question/active:
+    get:
+      tags: [debate]
+      summary: Get active question
+      operationId: get-active-question
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Question' }
+        '404': { description: Not Found; No active question }
+        '500': { description: Internal Server Error }
+
+  /debate/question/{id}/answer:
+    post:
+      tags: [debate]
+      summary: Answer as guest (no profile XP)
+      operationId: answer-guest
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AnswerCreateGuest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreatedIdResponse' }
+        '400': { description: Bad Request }
+        '404': { description: Not Found; Question not found or not active }
+        '409': { description: Conflict; Already answered }
+        '500': { description: Internal Server Error }
+
+  /debate/auth/question/{id}/answer:
+    post:
+      tags: [debate]
+      summary: Answer as authenticated user (with participation/streak/XP)
+      operationId: answer-auth
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AnswerCreateAuth' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreatedIdResponse' }
+        '400': { description: Bad Request }
+        '401': { description: Unauthorized }
+        '404': { description: Not Found; Question not found or not active }
+        '409': { description: Conflict; Already participated }
+        '500': { description: Internal Server Error }
+
+  /debate/answers/{answerId}/like:
+    post:
+      tags: [debate]
+      summary: Like an answer
+      operationId: like-answer
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - name: answerId
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '200': { description: OK; Liked }
+        '401': { description: Unauthorized }
+        '403': { description: Forbidden; You cannot like your own answer }
+        '404': { description: Not Found; Answer not found }
+        '500': { description: Internal Server Error }
+
+    delete:
+      tags: [debate]
+      summary: Unlike an answer
+      operationId: unlike-answer
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - name: answerId
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '200': { description: OK; Unliked }
+        '401': { description: Unauthorized }
+        '404': { description: Not Found; Answer not found }
+        '500': { description: Internal Server Error }
+
+  /debate/question/{id}/top:
+    get:
+      tags: [debate]
+      summary: Top answers by side
+      operationId: get-top-answers
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+        - name: side
+          in: query
+          required: false
+          schema: { type: string, enum: ['A', 'B'] }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, default: 10 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TopAnswersResponse' }
+        '404': { description: Not Found; Question not found }
+        '500': { description: Internal Server Error }
+
+  /debate/question/{id}/answers:
+    get:
+      tags: [debate]
+      summary: List answers for a question
+      operationId: list-answers
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+        - name: side
+          in: query
+          required: false
+          schema: { type: string, enum: ['A', 'B'] }
+          description: Filter by side (A or B)
+        - name: sort
+          in: query
+          required: false
+          schema: { type: string, enum: ['likes_desc', 'likes_asc', 'newest', 'oldest'], default: 'likes_desc' }
+          description: Sort order
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, default: 20 }
+        - name: offset
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        '200':
+          description: OK; List of answers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  question_id: { type: integer }
+                  total: { type: integer }
+                  answers:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        user_id: { type: integer, nullable: true }
+                        side: { type: string, enum: ['A', 'B'] }
+                        body: { type: string }
+                        likes_count: { type: integer }
+                        created_at: { type: string, format: date-time }
+        '404': { description: Not Found; Question not found }
+        '500': { description: Internal Server Error }
+
+  /debate/question/{id}/results:
+    get:
+      tags: [debate]
+      summary: Get question results
+      operationId: get-question-results
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: OK; Results data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  question_id: { type: integer }
+                  text: { type: string }
+                  option_a: { type: string }
+                  option_b: { type: string }
+                  votes:
+                    type: object
+                    properties:
+                      A: { type: integer }
+                      B: { type: integer }
+                  percentages:
+                    type: object
+                    properties:
+                      A: { type: number, format: float }
+                      B: { type: number, format: float }
+        '404': { description: Not Found; Question not found or still active }
         '500': { description: Internal Server Error }
 
 components:
@@ -342,41 +562,36 @@ components:
       properties:
         message: { type: string }
 
+    CreatedIdResponse:
+      type: object
+      properties:
+        message: { type: string }
+        id: { type: integer }
+
     UserLogin:
       description: User login
       type: object
       required: [email, user_password]
       properties:
-        email:
-          type: string
-          format: email
-          description: User's email address
-        user_password:
-          type: string
-          format: password
-          description: User's password
+        email: { type: string, format: email }
+        user_password: { type: string, format: password }
 
     UserRegister:
       description: User registration
       type: object
       required: [first_name, last_name, email, user_password]
       properties:
-        first_name: { type: string, description: User's first name }
-        last_name: { type: string, description: User's last name }
-        email: { type: string, format: email, description: User's email address }
-        user_password:
-          type: string
-          format: password
-          description: User's password
+        first_name: { type: string }
+        last_name: { type: string }
+        email: { type: string, format: email }
+        user_password: { type: string, format: password }
 
     UserGoogleLogin:
       description: User login with Google
       type: object
       required: [credential]
       properties:
-        credential:
-          type: string
-          description: Google authentication token
+        credential: { type: string }
 
     UserSafe:
       type: object
@@ -411,8 +626,7 @@ components:
       type: object
       properties:
         message: { type: string }
-        data:
-          $ref: '#/components/schemas/UserSafe'
+        data: { $ref: '#/components/schemas/UserSafe' }
 
     UserSecurity2FARequired:
       type: object
@@ -426,3 +640,74 @@ components:
         requires2FA: { type: boolean }
         message: { type: string }
         QRCode: { type: string, description: Data URL (image/png) of the QR }
+
+    QuestionCreate:
+      type: object
+      required: [text, option_a, option_b, date]
+      properties:
+        text: { type: string, minLength: 5, maxLength: 500 }
+        option_a: { type: string, minLength: 1, maxLength: 150 }
+        option_b: { type: string, minLength: 1, maxLength: 150 }
+        published_date:
+          type: string
+          description: ISO date or 'YYYY-MM-DD' (Europe/Madrid)
+        status:
+          type: string
+          enum: [scheduled, active]
+          description: Default 'scheduled'
+
+    Question:
+      type: object
+      properties:
+        id: { type: integer }
+        text: { type: string }
+        option_a: { type: string }
+        option_b: { type: string }
+        published_date: { type: string, format: date-time }
+        status: { type: string, enum: [scheduled, active, closed] }
+
+    AnswerCreateGuest:
+      type: object
+      required: [side, body]
+      properties:
+        side: { type: string, enum: ['A', 'B'] }
+        body: { type: string, minLength: 1, maxLength: 280 }
+        anonymous_key:
+          type: string
+          maxLength: 64
+          description: Optional identifier for guest users
+
+    AnswerCreateAuth:
+      type: object
+      required: [side, body]
+      properties:
+        side: { type: string, enum: ['A', 'B'] }
+        body: { type: string, minLength: 1, maxLength: 280 }
+
+    TopAnswerItem:
+      type: object
+      properties:
+        answer_id: { type: integer }
+        user_id: { type: integer, nullable: true }
+        side: { type: string, enum: ['A', 'B'] }
+        body: { type: string }
+        likes: { type: integer }
+
+    TopAnswersResponse:
+      oneOf:
+        - type: object
+          properties:
+            question_id: { type: integer }
+            side: { type: string, enum: ['A', 'B'] }
+            data:
+              type: array
+              items: { $ref: '#/components/schemas/TopAnswerItem' }
+        - type: object
+          properties:
+            question_id: { type: integer }
+            topA:
+              type: array
+              items: { $ref: '#/components/schemas/TopAnswerItem' }
+            topB:
+              type: array
+              items: { $ref: '#/components/schemas/TopAnswerItem' }

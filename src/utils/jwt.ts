@@ -15,7 +15,7 @@ export function cookieOptions(_req?: unknown): CookieOptions {
     secure: isProd,
     sameSite: 'strict',
     path: '/',
-    maxAge: 1000 * 60 * 60 * 24, // 1 día
+    maxAge: 1000 * 60 * 60 * 24,
   };
 }
 

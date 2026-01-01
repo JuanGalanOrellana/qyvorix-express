@@ -7,6 +7,11 @@ import { assignRoleToUserByName } from '@/models/role';
 import { insertRow } from '@/helpers';
 import crypto from 'crypto';
 import { queryRows, queryInsertion } from '@/config/db';
+import * as EmailVerifications from '@/models/email-verification';
+import { sendPasswordResetEmail, sendVerificationEmail } from '@/utils/mailer';
+import { hashCode, random6Digits } from '@/utils/emailCode';
+import { ensureUserStats } from '@/models/user-stats';
+import { UserMeRow } from '@/models/user-me';
 
 function randomToken() {
   return crypto.randomBytes(32).toString('hex');
@@ -16,27 +21,66 @@ function hashToken(token: string) {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
-const toSqlDate = (d: Date) => d.toISOString().slice(0, 19).replace('T', ' ');
+const toSqlDateLocal = (d: Date) => d.toISOString().slice(0, 19).replace('T', ' ');
+
+async function issueEmailVerificationCode(userId: number) {
+  const code = random6Digits();
+  const tokenHash = hashCode(code);
+
+  await EmailVerifications.invalidateAll(userId);
+  await EmailVerifications.createCode(userId, tokenHash);
+
+  return { code };
+}
 
 export const register: RequestHandler = async (req, res) => {
   const user: UserRegister = req.body;
+
   try {
+    const existing = await User.getByEmail(user.email.trim().toLowerCase());
+
+    if (existing.length) {
+      const ev = (existing[0] as { email_verified?: unknown }).email_verified;
+      const isVerified = ev === 1 || ev === true || ev === '1';
+
+      if (isVerified) {
+        res.status(409).json({ message: 'Email is already in use' });
+        return;
+      }
+
+      const { code } = await issueEmailVerificationCode(existing[0].id);
+      await sendVerificationEmail(user.email.trim().toLowerCase(), code);
+
+      res.status(200).json({
+        message: 'Account exists. Verification code sent.',
+      });
+      return;
+    }
+
     const createdUser = await User.createUser(user);
     await assignRoleToUserByName(createdUser.insertId, 'USER');
-    const token = createJwt({ id: createdUser.insertId }, process.env.JWT_SECRET!, 1);
-    res.cookie('token', token, cookieOptions(req));
-    res.status(201).json({ message: 'User registered successfully' });
+
+    await ensureUserStats(createdUser.insertId);
+
+    const { code } = await issueEmailVerificationCode(createdUser.insertId);
+    await sendVerificationEmail(user.email.trim().toLowerCase(), code);
+
+    res.status(201).json({
+      message: 'User registered. Verification code sent.',
+    });
   } catch (error) {
     console.error('[register]', error);
     res.status(500).json({ message: 'Internal Server Error' });
   }
 };
 
-export const login: RequestHandler = async (req, res) => {
+export const login: RequestHandler = async (_req, res) => {
   try {
-    const userId = res.locals.id;
+    const userId = res.locals.user.id as number;
+
     const token = createJwt({ id: userId }, process.env.JWT_SECRET!, 1);
-    res.cookie('token', token, cookieOptions(req));
+    res.cookie('token', token, cookieOptions(_req));
+
     res.status(200).json({ message: 'Login successful' });
   } catch (error) {
     console.error('[login]', error);
@@ -51,17 +95,72 @@ export const logout: RequestHandler = async (_req, res) => {
 
 export const getUserData: RequestHandler = async (_req, res) => {
   const id: number = res.locals.user.id;
+
   try {
-    const userData = await User.getById(id);
-    if (userData.length === 0) {
+    await ensureUserStats(id);
+
+    const rows = await queryRows<UserMeRow>(
+      `
+      SELECT
+        u.id,
+        u.first_name,
+        u.last_name,
+        u.display_name,
+        u.avatar_url,
+        u.email,
+        u.email_verified,
+        u.register_time,
+        s.total_xp,
+        s.influence_total,
+        s.power_majority_hits,
+        s.power_participations,
+        s.power_pct,
+        s.streak_days,
+        s.last_participation_date,
+        s.weekly_grace_tokens,
+        s.updated_at
+      FROM users u
+      LEFT JOIN user_stats s ON s.user_id = u.id
+      WHERE u.id = ?
+      LIMIT 1
+      `,
+      [id]
+    );
+
+    const me = rows[0];
+    if (!me) {
       res.status(404).json({ message: 'User not found' });
       return;
     }
-    const { user_password, ...safe } = userData[0] as any;
-    const roles = res.locals.roles ?? [];
+
+    const roles = (res.locals.roles ?? []) as string[];
+
     res.status(200).json({
       message: 'User data obtained successfully',
-      data: { ...safe, roles },
+      data: {
+        id: me.id,
+        first_name: me.first_name,
+        last_name: me.last_name,
+        display_name: me.display_name,
+        avatar_url: me.avatar_url,
+        email: me.email,
+        email_verified:
+          me.email_verified === true || me.email_verified === 1 || me.email_verified === '1',
+        register_time: me.register_time,
+        roles,
+        stats: {
+          user_id: me.id,
+          total_xp: Number(me.total_xp ?? 0),
+          influence_total: Number(me.influence_total ?? 0),
+          power_majority_hits: Number(me.power_majority_hits ?? 0),
+          power_participations: Number(me.power_participations ?? 0),
+          power_pct: Number(me.power_pct ?? 0),
+          streak_days: Number(me.streak_days ?? 0),
+          last_participation_date: me.last_participation_date ?? null,
+          weekly_grace_tokens: Number(me.weekly_grace_tokens ?? 0),
+          updated_at: me.updated_at,
+        },
+      },
     });
   } catch (error) {
     console.error('[getUserData]', error);
@@ -71,9 +170,18 @@ export const getUserData: RequestHandler = async (_req, res) => {
 
 export const updateUserData: RequestHandler = async (req, res) => {
   const id = res.locals.user.id;
-  const user: Partial<UserSensitiveData> = req.body;
+  const body = req.body as Partial<UserSensitiveData>;
+
+  const patch: Partial<UserSensitiveData> = {
+    first_name: body.first_name,
+    last_name: body.last_name,
+    phone: body.phone,
+    display_name: body.display_name?.trim() ? body.display_name.trim() : null,
+    avatar_url: body.avatar_url?.trim() ? body.avatar_url.trim() : null,
+  };
+
   try {
-    const r = await User.updateUserData(id, user);
+    const r = await User.updateUserData(id, patch);
     if (!r || r.affectedRows === 0) {
       res.status(404).json({ message: 'User not found' });
       return;
@@ -85,54 +193,127 @@ export const updateUserData: RequestHandler = async (req, res) => {
   }
 };
 
-export const sendVerificationEmail: RequestHandler = async (_req, res) => {
+export const resendVerificationEmail: RequestHandler = async (req, res) => {
   try {
-    res.status(200).json({ message: 'Email sent successfully' });
+    const email = (req.body?.email as string | undefined)?.trim().toLowerCase();
+    if (!email) {
+      res.status(400).json({ message: 'Email is required' });
+      return;
+    }
+
+    const q = await User.getByEmail(email);
+    if (!q.length) {
+      res.status(404).json({ message: 'User not found' });
+      return;
+    }
+
+    const userId = q[0].id;
+    const ev = (q[0] as { email_verified?: unknown }).email_verified;
+    const isVerified = ev === 1 || ev === true || ev === '1';
+
+    if (isVerified) {
+      res.status(200).json({ message: 'Email already verified' });
+      return;
+    }
+
+    const last = await EmailVerifications.lastSentAt(userId);
+    if (last.length) {
+      const lastAt = new Date(last[0].created_at).getTime();
+      if (Date.now() - lastAt < 60_000) {
+        res.status(429).json({ message: 'Please wait before requesting another code' });
+        return;
+      }
+    }
+
+    const { code } = await issueEmailVerificationCode(userId);
+    await sendVerificationEmail(email, code);
+
+    res.status(200).json({
+      message: 'Verification code sent',
+    });
   } catch (error) {
-    console.error('[sendVerificationEmail]', error);
+    console.error('[resendVerificationEmail]', error);
     res.status(500).json({ message: 'Internal Server Error' });
   }
 };
 
-export const emailVerification: RequestHandler = async (_req, res) => {
-  const id: number = res.locals.id;
+export const verifyEmailCode: RequestHandler = async (req, res) => {
   try {
-    const row = await User.getById(id);
-    if (row.length === 0) {
+    const { email, code } = req.body as { email?: string; code?: string };
+
+    if (!email || !code) {
+      res.status(400).json({ message: 'email and code are required' });
+      return;
+    }
+
+    const normEmail = email.trim().toLowerCase();
+    const users = await User.getByEmail(normEmail);
+
+    if (!users.length) {
       res.status(404).json({ message: 'User not found' });
       return;
     }
-    const result = await User.verifyEmail(row[0].email);
-    if (result.affectedRows === 0) {
-      res.status(404).json({ message: 'Email not found' });
+
+    const user = users[0];
+    const tokenHash = hashCode(code.trim());
+
+    const rows = await EmailVerifications.findValidCode(user.id, tokenHash);
+    if (!rows.length) {
+      res.status(401).json({ message: 'Invalid or expired code' });
       return;
     }
+
+    await EmailVerifications.markUsed(rows[0].id);
+    await EmailVerifications.invalidateAll(user.id);
+
+    await User.verifyEmail(normEmail);
+
+    const token = createJwt({ id: user.id }, process.env.JWT_SECRET!, 1);
+    res.cookie('token', token, cookieOptions(req));
+
     res.status(200).json({ message: 'Email verified successfully' });
   } catch (error) {
-    console.error('[emailVerification]', error);
+    console.error('[verifyEmailCode]', error);
     res.status(500).json({ message: 'Internal Server Error' });
   }
 };
 
 export const forgotPasswordEmail: RequestHandler = async (req, res) => {
-  const email = req.body.email;
+  const email = (req.body?.email as string | undefined)?.trim().toLowerCase();
+
+  if (!email) {
+    res.status(400).json({ message: 'Email is required' });
+    return;
+  }
+
   try {
     const q = await User.getByEmail(email);
+
     if (q.length === 0) {
-      res.status(404).json({ message: 'Email not found' });
+      res.status(200).json({ message: 'If the email exists, we sent instructions' });
       return;
     }
+
     const token = randomToken();
     const tokenHash = hashToken(token);
-    const now = new Date();
-    const expiresAt = toSqlDate(new Date(now.getTime() + 1000 * 60 * 60));
+
+    await queryInsertion('UPDATE password_resets SET used = 1 WHERE user_id = ? AND used = 0', [
+      q[0].id,
+    ]);
+
     await insertRow('password_resets', {
       user_id: q[0].id,
       token_hash: tokenHash,
-      expires_at: expiresAt,
+      expires_at: toSqlDateLocal(new Date(Date.now() + 1000 * 60 * 60)),
       used: 0,
-      created_at: toSqlDate(now),
+      created_at: toSqlDateLocal(new Date()),
     });
+
+    const frontBase = process.env.FRONTEND_URL ?? 'http://localhost:4200';
+    const resetUrl = `${frontBase}/reset-password?token=${encodeURIComponent(token)}`;
+
+    await sendPasswordResetEmail(email, resetUrl);
+
     res.status(200).json({ message: 'Email sent successfully' });
   } catch (error) {
     console.error('[forgotPasswordEmail]', error);
@@ -141,29 +322,44 @@ export const forgotPasswordEmail: RequestHandler = async (req, res) => {
 };
 
 export const resetPassword: RequestHandler = async (req, res) => {
-  const token = req.body.token as string | undefined;
-  const newPassword = req.body.user_password;
+  const token = (req.body?.token as string | undefined)?.trim();
+  const newPassword = req.body?.user_password;
+
   if (!token) {
     res.status(400).json({ message: 'Token is required' });
     return;
   }
+
+  if (!newPassword) {
+    res.status(400).json({ message: 'user_password is required' });
+    return;
+  }
+
   try {
     const tokenHash = hashToken(token);
+
     const rows = await queryRows(
-      'SELECT * FROM password_resets WHERE token_hash = ? AND used = 0 AND expires_at >= NOW() LIMIT 1',
+      'SELECT * FROM password_resets WHERE token_hash = ? AND used = 0 AND expires_at >= UTC_TIMESTAMP() LIMIT 1',
       [tokenHash]
     );
-    if (!rows || rows.length === 0) {
+
+    if (!rows?.length) {
       res.status(401).json({ message: 'Invalid or expired token' });
       return;
     }
-    const userId = (rows as any)[0].user_id;
+
+    const userId = (rows as { user_id: number }[])[0].user_id;
     const r = await User.changePassword(userId, newPassword);
+
     if (r.affectedRows === 0) {
       res.status(404).json({ message: 'User not found' });
       return;
     }
-    await queryInsertion('UPDATE password_resets SET used = 1 WHERE id = ?', [(rows as any)[0].id]);
+
+    await queryInsertion('UPDATE password_resets SET used = 1 WHERE id = ?', [
+      (rows as { id: number }[])[0].id,
+    ]);
+
     res.status(200).json({ message: 'Password changed successfully' });
   } catch (error) {
     console.error('[resetPassword]', error);
@@ -173,12 +369,19 @@ export const resetPassword: RequestHandler = async (req, res) => {
 
 export const googleLogin: RequestHandler = async (req, res) => {
   const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
-  const { credential } = req.body;
+  const { credential } = req.body as { credential?: string };
+
+  if (!credential) {
+    res.status(400).json({ message: 'Missing credential' });
+    return;
+  }
+
   try {
     const ticket = await client.verifyIdToken({
       idToken: credential,
       audience: process.env.GOOGLE_CLIENT_ID,
     });
+
     const payload = ticket.getPayload();
     if (!payload?.email) {
       res.status(401).json({ message: 'Invalid Google token' });
@@ -188,7 +391,14 @@ export const googleLogin: RequestHandler = async (req, res) => {
       res.status(403).json({ message: 'Google account not verified' });
       return;
     }
+
     const q = await User.getByEmail(payload.email);
+
+    const setSessionCookie = (userId: number) => {
+      const token = createJwt({ id: userId }, process.env.JWT_SECRET!, 1);
+      res.cookie('token', token, cookieOptions(req));
+    };
+
     if (q.length === 0) {
       const created = await User.createUser({
         first_name: payload.given_name || 'NoName',
@@ -203,24 +413,34 @@ export const googleLogin: RequestHandler = async (req, res) => {
         }),
         email_verified: true,
       });
+
       await assignRoleToUserByName(created.insertId, 'USER');
-      const token = createJwt({ id: created.insertId }, process.env.JWT_SECRET!, 1);
-      res.cookie('token', token, cookieOptions(req));
+      await ensureUserStats(created.insertId);
+      setSessionCookie(created.insertId);
+
       const [user] = await User.getById(created.insertId);
-      const { user_password, ...safe } = user as any;
+      const { user_password, ...safe } = user;
+
       res.status(201).json({ message: 'User created and logged in successfully', data: safe });
       return;
-    } else {
-      await assignRoleToUserByName(q[0].id, 'USER');
-      if (q[0].email_verified === false) {
-        await User.verifyEmail(q[0].email);
-      }
-      const token = createJwt({ id: q[0].id }, process.env.JWT_SECRET!, 1);
-      res.cookie('token', token, cookieOptions(req));
-      const [user] = await User.getById(q[0].id);
-      const { user_password, ...safe } = user as any;
-      res.status(200).json({ message: 'User logged in successfully', data: safe });
     }
+
+    await assignRoleToUserByName(q[0].id, 'USER');
+    const ev = (q[0] as { email_verified?: unknown }).email_verified;
+    const isVerified = ev === 1 || ev === true || ev === '1';
+
+    if (!isVerified) {
+      await User.verifyEmail(q[0].email);
+    }
+
+    await ensureUserStats(q[0].id);
+
+    setSessionCookie(q[0].id);
+
+    const [user] = await User.getById(q[0].id);
+    const { user_password, ...safe } = user;
+
+    res.status(200).json({ message: 'User logged in successfully', data: safe });
   } catch (error) {
     console.error('[googleLogin]', error);
     res.status(401).json({ message: 'Invalid Google credential' });
@@ -233,8 +453,8 @@ const userController = {
   logout,
   getUserData,
   updateUserData,
-  sendVerificationEmail,
-  emailVerification,
+  resendVerificationEmail,
+  verifyEmailCode,
   forgotPasswordEmail,
   resetPassword,
   googleLogin,

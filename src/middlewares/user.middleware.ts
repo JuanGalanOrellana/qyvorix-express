@@ -1,11 +1,10 @@
 import bcrypt from 'bcrypt';
 import { Request, Response, NextFunction } from 'express';
-import { body, query } from 'express-validator';
+import { body } from 'express-validator';
 import User, { UserLogin } from '@/models/user';
 import UserSecurity, { UserSecurityAttempts } from '@/models/user-security';
 import { checkErrors } from './common.middleware';
-import { hasJwtSecret, validateCookieToken, verifyResetToken, verifyToken } from './jwt.middleware';
-import jwt from 'jsonwebtoken';
+import { hasJwtSecret, validateCookieToken, verifyToken } from './jwt.middleware';
 
 export const emailValid = async (req: Request, _res: Response, next: NextFunction) => {
   const email = body('email')
@@ -18,7 +17,6 @@ export const emailValid = async (req: Request, _res: Response, next: NextFunctio
     .trim();
 
   await email.run(req);
-
   next();
 };
 
@@ -68,34 +66,12 @@ export const currentPasswordValid = async (req: Request, _res: Response, next: N
 
 const validSensitiveData = async (req: Request, _res: Response, next: NextFunction) => {
   const sensitiveData = [
-    body('first_name')
-      .optional()
-      .isString()
-      .bail()
-      .withMessage('First name must be a string')
-      .isLength({ min: 2 })
-      .withMessage('First name must be at least 2 characters long'),
-    body('last_name')
-      .optional()
-      .isString()
-      .bail()
-      .withMessage('Last name must be a string')
-      .isLength({ min: 2 })
-      .withMessage('Last name must be at least 2 characters long'),
-    body('address')
-      .optional()
-      .isString()
-      .bail()
-      .withMessage('Address must be a string')
-      .isLength({ min: 5 })
-      .withMessage('Address must be at least 5 characters long'),
-    body('phone')
-      .optional()
-      .isString()
-      .bail()
-      .withMessage('Phone number must be a string')
-      .isLength({ min: 9 })
-      .withMessage('Phone number must be at least 9 characters long'),
+    body('first_name').optional().isString().bail().isLength({ min: 2 }),
+    body('last_name').optional().isString().bail().isLength({ min: 2 }),
+    body('address').optional().isString().bail().isLength({ min: 5 }),
+    body('phone').optional().isString().bail().isLength({ min: 9 }),
+    body('display_name').optional().isString().bail().isLength({ min: 2, max: 80 }),
+    body('avatar_url').optional().isString().bail().isLength({ min: 5, max: 500 }),
   ];
 
   for (const validation of sensitiveData) {
@@ -103,25 +79,6 @@ const validSensitiveData = async (req: Request, _res: Response, next: NextFuncti
   }
 
   next();
-};
-
-const isEmailTaken = async (req: Request, res: Response, next: NextFunction) => {
-  const { email } = req.body;
-
-  try {
-    const emailTaken = await User.isEmailTaken(email);
-
-    if (emailTaken) {
-      res.status(409).json({ message: 'Email is already in use' });
-      return;
-    }
-
-    next();
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Internal Server Error' });
-    return;
-  }
 };
 
 export const loadUserByEmail = async (req: Request, res: Response, next: NextFunction) => {
@@ -140,21 +97,29 @@ export const loadUserByEmail = async (req: Request, res: Response, next: NextFun
       return;
     }
 
-    res.locals = {
-      ...res.locals,
-      ...queryResult[0],
-    };
-
+    res.locals.user = queryResult[0];
     next();
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Internal Server Error' });
-    return;
   }
 };
 
+export const requireEmailVerified = (_req: Request, res: Response, next: NextFunction) => {
+  const v = res.locals?.user?.email_verified;
+
+  const isVerified = v === true || v === 1 || v === '1';
+
+  if (!isVerified) {
+    res.status(403).json({ message: 'Email not verified' });
+    return;
+  }
+
+  next();
+};
+
 export const isPasswordCorrect = async (req: Request, res: Response, next: NextFunction) => {
-  const user = res.locals;
+  const user = res.locals.user as { user_password: string };
   const { user_password }: UserLogin = req.body;
   const userSecurity = res.locals?.userSecurity;
 
@@ -200,60 +165,47 @@ export const isPasswordCorrect = async (req: Request, res: Response, next: NextF
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Internal Server Error' });
-    return;
   }
 };
 
-const getUserByEmail = async (req: Request, res: Response, next: NextFunction) => {
-  const { email } = req.body;
+const resetTokenValid = async (req: Request, _res: Response, next: NextFunction) => {
+  const token = body('token')
+    .exists()
+    .withMessage('Token is required')
+    .bail()
+    .isString()
+    .withMessage('Token must be a string')
+    .trim();
 
-  try {
-    const queryResult = await User.getByEmail(email);
-
-    if (queryResult.length === 0) {
-      res.status(404).json({ message: 'User not found' });
-      return;
-    }
-
-    res.locals = {
-      ...res.locals,
-      user: queryResult[0],
-    };
-
-    next();
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Internal Server Error' });
-    return;
-  }
-};
-
-const emailTokenValid = async (req: Request, _res: Response, next: NextFunction) => {
-  await query('token').exists().withMessage('token is required').bail().isJWT().run(req);
+  await token.run(req);
   next();
 };
 
-const verifyEmailToken = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const decoded = jwt.verify(req.query.token as string, process.env.JWT_SECRET!) as {
-      id: string;
-    };
-    res.locals.id = decoded.id;
-    return next();
-  } catch {
-    return res.status(401).json({ message: 'Not Authorized' });
-  }
+export const codeValid = async (req: Request, _res: Response, next: NextFunction) => {
+  const code = body('code')
+    .exists()
+    .withMessage('code is required')
+    .bail()
+    .isString()
+    .withMessage('code must be a string')
+    .trim()
+    .matches(/^\d{6}$/)
+    .withMessage('code must be 6 digits');
+
+  await code.run(req);
+  next();
 };
 
 export const validateUser = [hasJwtSecret, validateCookieToken('token', 'token'), verifyToken];
 
-export const validateRegister = [emailValid, passwordValid, checkErrors, isEmailTaken];
+export const validateRegister = [emailValid, passwordValid, checkErrors];
 
 export const validateLogin = [
   emailValid,
   currentPasswordValid,
   checkErrors,
   loadUserByEmail,
+  requireEmailVerified,
   isPasswordCorrect,
 ];
 
@@ -261,19 +213,10 @@ export const validateGoogleLogin = [credentialValid, checkErrors];
 
 export const validateUpdate = [...validateUser, validSensitiveData, checkErrors];
 
-export const validateForgotPasswordEmail = [emailValid, checkErrors, getUserByEmail];
+export const validateForgotPasswordEmail = [emailValid, checkErrors, loadUserByEmail];
 
-export const validateResetPassword = [
-  hasJwtSecret,
-  validateCookieToken('resetToken', 'resetToken'),
-  verifyResetToken,
-  passwordValid,
-  checkErrors,
-];
+export const validateResetPasswordFromBody = [resetTokenValid, passwordValid, checkErrors];
 
-export const validateEmailVerification = [
-  hasJwtSecret,
-  emailTokenValid,
-  checkErrors,
-  verifyEmailToken,
-];
+export const validateResendVerificationEmail = [emailValid, checkErrors];
+
+export const validateVerifyEmailCode = [emailValid, codeValid, checkErrors];

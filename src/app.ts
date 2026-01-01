@@ -32,7 +32,8 @@ app.use(
 
 app.use(compression());
 app.use(cookieParser());
-app.use(bodyParser.json());
+app.use(bodyParser.json({ limit: '10mb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 app.use('/api/docs', swaggerUI.serve, swaggerUI.setup(swaggerDocument));
 app.use('/', router);
 
