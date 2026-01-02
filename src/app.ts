@@ -7,6 +7,7 @@ import router from './routes/index.routes';
 import swaggerUI from 'swagger-ui-express';
 import YAML from 'yamljs';
 import { initPool } from '@/config/db';
+import path from 'path';
 
 const app = express();
 
@@ -19,13 +20,26 @@ const config = {
   decimalNumbers: true,
 };
 
-const swaggerDocument = YAML.load('./openapi.yaml');
+const swaggerDocument = YAML.load(path.join(process.cwd(), 'openapi.yaml'));
 
 initPool(config);
 
+const allowedOrigins = [
+  'http://localhost:4200',
+  'https://qyvorix-angular.pages.dev',
+  'https://qyvorix.com',
+  'https://www.qyvorix.com',
+];
+
+app.set('trust proxy', 1);
+
 app.use(
   cors({
-    origin: 'http://localhost:4200',
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true);
+      if (allowedOrigins.includes(origin)) return cb(null, true);
+      return cb(null, false);
+    },
     credentials: true,
   })
 );

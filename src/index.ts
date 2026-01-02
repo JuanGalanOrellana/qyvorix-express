@@ -4,10 +4,10 @@ import { startDailyQuestionScheduler } from '@/cron/dailyQuestionScheduler';
 
 const server = http.createServer(app);
 
-server.listen(8080, () => {
-  console.log('✅ Server is running on http://localhost:8080');
-  console.log('📘 Swagger docs: http://localhost:8080/api/docs');
-  (async () => {
-    startDailyQuestionScheduler();
-  })();
+const PORT = Number(process.env.PORT) || 8080;
+
+server.listen(PORT, () => {
+  console.log(`✅ Server is running on http://localhost:${PORT}`);
+  console.log(`📘 Swagger docs: http://localhost:${PORT}/api/docs`);
+  startDailyQuestionScheduler();
 });

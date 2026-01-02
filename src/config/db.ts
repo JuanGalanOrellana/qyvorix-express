@@ -6,12 +6,24 @@ dotenv.config();
 export let pool = undefined as ReturnType<typeof createPool> | undefined;
 
 export const initPool = (config: any) => {
+  const isProd = process.env.NODE_ENV === 'production';
+
+  const ca = process.env.DB_CA_CERT?.replace(/\\n/g, '\n');
+
+  const ssl = ca
+    ? {
+        ca,
+        rejectUnauthorized: isProd,
+      }
+    : undefined;
+
   pool = createPool({
     ...config,
     waitForConnections: true,
     connectionLimit: config.connectionLimit ?? 10,
     queueLimit: 0,
     timezone: 'Z',
+    ssl,
   });
 };
 
