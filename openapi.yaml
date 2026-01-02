@@ -4,7 +4,9 @@ info:
   description: API for Qyvorix application
   version: 1.1.0
 servers:
-  - description: Development server
+  - description: Production
+    url: https://api.qyvorix.com
+  - description: Development
     url: http://localhost:8080
 
 paths:

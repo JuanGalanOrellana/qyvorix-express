@@ -29,6 +29,7 @@ const allowedOrigins = [
   'https://qyvorix-angular.pages.dev',
   'https://qyvorix.com',
   'https://www.qyvorix.com',
+  'https://api.qyvorix.com',
 ];
 
 app.set('trust proxy', 1);
