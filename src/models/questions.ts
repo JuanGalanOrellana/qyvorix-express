@@ -74,15 +74,18 @@ function toIsoDate(d: unknown): string {
 }
 
 async function getNextDueQuestion(): Promise<QuestionRow | null> {
-  const rows = await queryRows<QuestionRow>(`
+  const today = todayInMadridIso();
+  const rows = await queryRows<QuestionRow>(
+    `
     SELECT *
     FROM questions
     WHERE status = 'scheduled'
-      AND published_date <= DATE(CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', 'Europe/Madrid'))
+      AND published_date <= ?
     ORDER BY published_date ASC, id ASC
     LIMIT 1
-  `);
-
+    `,
+    [today]
+  );
   return rows[0] ?? null;
 }
 
@@ -97,9 +100,16 @@ async function closeActiveAndSettle(): Promise<void> {
 
   if (!active) return;
 
-  await settleQuestionPower(active.id);
+  await updateRow('questions', { status: 'closed' }, 'id = ? AND status = ?', [
+    active.id,
+    'active',
+  ]);
 
-  await updateRow('questions', { status: 'closed' }, 'id = ? AND status = "active"', [active.id]);
+  try {
+    await settleQuestionPower(active.id);
+  } catch (e) {
+    console.error('[settleQuestionPower] failed for question', active.id, e);
+  }
 }
 
 export const activateNextDue = async (): Promise<void> => {
