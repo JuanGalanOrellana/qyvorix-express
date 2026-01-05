@@ -50,6 +50,9 @@ app.use(cookieParser());
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 app.use('/api/docs', swaggerUI.serve, swaggerUI.setup(swaggerDocument));
+app.get('/health', (_req, res) => {
+  res.status(200).send('ok');
+});
 app.use('/', router);
 
 export default app;
