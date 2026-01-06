@@ -10,10 +10,7 @@ function getSmtpTransporter() {
       host: env('SMTP_HOST'),
       port,
       secure: port === 465,
-      auth: {
-        user: env('SMTP_USER'),
-        pass: env('SMTP_PASS'),
-      },
+      auth: { user: env('SMTP_USER'), pass: env('SMTP_PASS') },
       requireTLS: port === 587,
       connectionTimeout: 10_000,
       greetingTimeout: 10_000,
@@ -27,8 +24,7 @@ type ResendEmailPayload = {
   from: string;
   to: string | string[];
   subject: string;
-  text?: string;
-  html?: string;
+  text: string;
 };
 
 async function resendSend(payload: ResendEmailPayload) {
@@ -47,17 +43,18 @@ async function resendSend(payload: ResendEmailPayload) {
   }
 }
 
-function getFrom() {
-  const mode = (process.env.EMAIL_MODE ?? 'smtp').toLowerCase();
-  if (mode === 'resend') return env('EMAIL_FROM');
-  return env('SMTP_FROM');
+function emailMode() {
+  return (process.env.EMAIL_MODE ?? 'smtp').toLowerCase();
+}
+
+function emailFrom() {
+  return emailMode() === 'resend' ? env('EMAIL_FROM') : env('SMTP_FROM');
 }
 
 export async function sendVerificationEmail(to: string, code: string) {
-  const mode = (process.env.EMAIL_MODE ?? 'smtp').toLowerCase();
-  const from = getFrom();
+  const from = emailFrom();
 
-  if (mode === 'resend') {
+  if (emailMode() === 'resend') {
     await resendSend({
       from,
       to,
@@ -76,10 +73,9 @@ export async function sendVerificationEmail(to: string, code: string) {
 }
 
 export async function sendPasswordResetEmail(to: string, resetUrl: string) {
-  const mode = (process.env.EMAIL_MODE ?? 'smtp').toLowerCase();
-  const from = getFrom();
+  const from = emailFrom();
 
-  if (mode === 'resend') {
+  if (emailMode() === 'resend') {
     await resendSend({
       from,
       to,
