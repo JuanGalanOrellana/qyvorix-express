@@ -1,7 +1,9 @@
 import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 import { env } from './env';
 
 let transporter: nodemailer.Transporter | null = null;
+let resendClient: Resend | null = null;
 
 function getSmtpTransporter() {
   if (!transporter) {
@@ -20,27 +22,11 @@ function getSmtpTransporter() {
   return transporter;
 }
 
-type ResendEmailPayload = {
-  from: string;
-  to: string | string[];
-  subject: string;
-  text: string;
-};
-
-async function resendSend(payload: ResendEmailPayload) {
-  const r = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${env('RESEND_API_KEY')}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!r.ok) {
-    const t = await r.text().catch(() => '');
-    throw new Error(`RESEND_ERROR_${r.status}${t ? `_${t}` : ''}`);
+function getResendClient() {
+  if (!resendClient) {
+    resendClient = new Resend(env('RESEND_API_KEY'));
   }
+  return resendClient;
 }
 
 function emailMode() {
@@ -49,6 +35,33 @@ function emailMode() {
 
 function emailFrom() {
   return emailMode() === 'resend' ? env('EMAIL_FROM') : env('SMTP_FROM');
+}
+
+async function resendSend(payload: {
+  from: string;
+  to: string | string[];
+  subject: string;
+  text: string;
+}) {
+  const client = getResendClient();
+  const to = Array.isArray(payload.to) ? payload.to : [payload.to];
+  const r = await client.emails.send({
+    from: payload.from,
+    to,
+    subject: payload.subject,
+    text: payload.text,
+  });
+
+  if ((r as any)?.error) {
+    const e = (r as any).error;
+    const msg =
+      typeof e === 'string'
+        ? e
+        : `${e?.name ?? 'RESEND_ERROR'}_${e?.message ?? 'unknown'}${
+            e?.statusCode ? `_STATUS_${e.statusCode}` : ''
+          }`;
+    throw new Error(msg);
+  }
 }
 
 export async function sendVerificationEmail(to: string, code: string) {
