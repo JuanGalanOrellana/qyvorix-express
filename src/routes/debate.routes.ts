@@ -64,4 +64,10 @@ debateRouter.get('/my-likes', validateUser, loadRoles, debateController.getMyLik
 
 debateRouter.get('/user/:userId/likes', tryValidateUser, debateController.getUserLikes);
 
+debateRouter.get(
+  '/header',
+  tryValidateUser,
+  debateController.getHeaderLeaderboards
+);
+
 export default debateRouter;

@@ -79,14 +79,10 @@ export const applyStreakOnAnswerMw = async (
 
     if (lastIso === today) {
       const xpAdd = calcAnswerXp(newStreak || 1, false);
-      await queryInsertion(
-        `
-        UPDATE user_stats
-        SET total_xp = total_xp + ?
-        WHERE user_id = ?
-        `,
-        [xpAdd, user.id]
-      );
+      await queryInsertion(`UPDATE user_stats SET total_xp = total_xp + ? WHERE user_id = ?`, [
+        xpAdd,
+        user.id,
+      ]);
       next();
       return;
     }
@@ -97,13 +93,8 @@ export const applyStreakOnAnswerMw = async (
       if (gap === 1) {
         newStreak = Math.max(1, newStreak) + 1;
       } else if (gap > 1) {
-        if (grace > 0) {
-          grace -= 1;
-          newStreak = Math.max(1, newStreak) + 1;
-        } else {
-          usedComeback = true;
-          newStreak = 1;
-        }
+        usedComeback = true;
+        newStreak = 1;
       } else {
         newStreak = Math.max(1, newStreak);
       }
@@ -123,7 +114,7 @@ export const applyStreakOnAnswerMw = async (
         total_xp = total_xp + ?
       WHERE user_id = ?
       `,
-      [newStreak, grace, today, xpAdd, user.id]
+      [newStreak, 0, today, xpAdd, user.id]
     );
 
     next();

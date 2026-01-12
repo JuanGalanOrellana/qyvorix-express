@@ -478,6 +478,38 @@ const getUserLikes: RequestHandler = async (req, res): Promise<void> => {
   }
 };
 
+export const getHeaderLeaderboards: RequestHandler = async (req, res) => {
+  try {
+    const limitAnswers = Math.min(Number(req.query.answers ?? 10), 50);
+    const limitProfiles = Math.min(Number(req.query.profiles ?? 10), 50);
+
+    const topAnswers = await queryRows(
+      `
+      SELECT *
+      FROM v_top_answers_global
+      LIMIT ?
+      `,
+      [limitAnswers]
+    );
+
+    const topProfiles = await queryRows(
+      `
+      SELECT *
+      FROM v_top_profiles_by_level
+      LIMIT ?
+      `,
+      [limitProfiles]
+    );
+
+    res.status(200).json({
+      data: { topAnswers, topProfiles },
+    });
+  } catch (e) {
+    console.error('[getHeaderLeaderboards]', e);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
 const debateController = {
   getActiveQuestion,
   answer,
@@ -492,6 +524,7 @@ const debateController = {
   getUserAnswers,
   getMyLikes,
   getUserLikes,
+  getHeaderLeaderboards,
 };
 
 export default debateController;

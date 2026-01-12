@@ -149,38 +149,6 @@ CREATE TABLE user_stats (
 
 DELIMITER $$
 
-CREATE TRIGGER trg_answer_likes_after_insert
-AFTER INSERT ON answer_likes FOR EACH ROW
-BEGIN
-  UPDATE answers
-  SET likes_count = likes_count + 1
-  WHERE id = NEW.answer_id;
-
-  UPDATE user_stats s
-  JOIN answers a ON a.id = NEW.answer_id
-  SET
-    s.total_xp = s.total_xp + 2,
-    s.influence_total = s.influence_total + 1
-  WHERE s.user_id = a.user_id AND a.user_id IS NOT NULL;
-END$$
-
-CREATE TRIGGER trg_answer_likes_after_delete
-AFTER DELETE ON answer_likes FOR EACH ROW
-BEGIN
-  UPDATE answers
-  SET likes_count = GREATEST(likes_count - 1, 0)
-  WHERE id = OLD.answer_id;
-
-  UPDATE user_stats s
-  JOIN answers a ON a.id = OLD.answer_id
-  SET
-    s.total_xp = GREATEST(s.total_xp - 2, 0),
-    s.influence_total = GREATEST(s.influence_total - 1, 0)
-  WHERE s.user_id = a.user_id AND a.user_id IS NOT NULL;
-END$$
-
-DELIMITER ;
-
 CREATE TABLE daily_user_influence (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   question_id BIGINT UNSIGNED NOT NULL,
@@ -199,25 +167,39 @@ CREATE TABLE daily_user_influence (
     ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE OR REPLACE VIEW v_top_answers_by_side AS
+CREATE OR REPLACE VIEW v_top_answers_global AS
 SELECT
-  a.question_id,
-  a.side,
   a.id AS answer_id,
+  a.question_id,
+  q.text AS question_text,
+  q.option_a,
+  q.option_b,
+  q.published_date,
+  q.status,
   a.user_id,
-  a.likes_count,
+  COALESCE(u.display_name, CONCAT(u.first_name, ' ', u.last_name)) AS user_name,
+  u.avatar_url,
+  a.side,
   a.body,
-  ROW_NUMBER() OVER (
-    PARTITION BY a.question_id, a.side
-    ORDER BY a.likes_count DESC, a.id ASC
-  ) AS side_rank
-FROM answers a;
+  a.likes_count,
+  a.created_at
+FROM answers a
+JOIN questions q ON q.id = a.question_id
+JOIN users u ON u.id = a.user_id
+WHERE a.user_id IS NOT NULL
+ORDER BY a.likes_count DESC, a.created_at DESC, a.id DESC;
 
-CREATE OR REPLACE VIEW v_global_influence_ranking AS
-SELECT 
+CREATE OR REPLACE VIEW v_top_profiles_by_level AS
+SELECT
   u.id AS user_id,
   COALESCE(u.display_name, CONCAT(u.first_name, ' ', u.last_name)) AS user_name,
+  u.avatar_url,
+  s.total_xp,
+  (FLOOR(s.total_xp / 100) + 1) AS level,
   s.influence_total,
-  DENSE_RANK() OVER (ORDER BY s.influence_total DESC, u.id ASC) AS rank_position
+  s.power_participations,
+  s.power_pct,
+  s.streak_days
 FROM users u
-JOIN user_stats s ON s.user_id = u.id;
+JOIN user_stats s ON s.user_id = u.id
+ORDER BY level DESC, s.total_xp DESC, u.id ASC;
